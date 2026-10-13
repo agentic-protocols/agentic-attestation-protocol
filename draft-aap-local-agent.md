@@ -227,7 +227,7 @@ This document registers nothing. The `OAuth-Client-Attestation` header is regist
 
 # Open Items {#open-items}
 
-- The self-operated profile ({{self-operated}}): linking and issuance with the issuer as sole operator of record, the key-bound anchor, and platform-less key carriage (an inline Web Bot Auth directory is the current candidate). Tracked in the repository's design issues.
+- The self-operated profile ({{self-operated}}): linking and issuance with the issuer as sole operator of record, the key-bound anchor, and platform-less key carriage (an inline Web Bot Auth directory is the current candidate).
 - Whether the self-operated profile belongs in this document or in a separate module: this document covers a platform's device-resident surface, while a self-operated agent has no platform at all. To be decided together with the profile's design.
 - Claims-credential provisioning to a device-resident wallet ({{device-issuance}}): unlike AAT issuance, credential provisioning is not blind, so the issuance relay would expose claim values to the platform; whether the device agent provisions directly, or an encrypted-to-device relay is defined, is undecided ({{AAP-CLAIMS}}).
 - Whether hardware or device attestation should ever be surfaced to the verifier (beyond informing the platform's endorsement decision), or remains permanently a platform-internal input ({{scope-and-claim}}).
