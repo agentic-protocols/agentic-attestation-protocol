@@ -1,0 +1,601 @@
+---
+title: Agent Attestation Protocol (AAP)
+abbrev: AAP
+docname: draft-agent-attestation-protocol-latest
+category: std
+ipr: trust200902
+submissiontype: IETF
+date: 2026-08-12
+keyword:
+  - attestation
+  - agent
+  - Privacy Pass
+stand_alone: yes
+pi: [toc, sortrefs, symrefs, comments]
+author:
+  - ins: R. Drapeau
+    name: Ryan Drapeau
+    org: Stripe
+    email: drapeau@stripe.com
+  - ins: D. Pettersson
+    name: David Pettersson
+    org: Shopify
+    email: david.pettersson@shopify.com
+normative:
+  RFC2119:
+  RFC7638:
+  RFC8174:
+  RFC9110:
+  RFC9421:
+  RFC9530:
+  RFC9577:
+  RFC9578:
+informative:
+  RFC2606:
+  RFC3553:
+  RFC7523:
+  RFC8628:
+  RFC9449:
+  RFC9576:
+  I-D.ietf-httpapi-idempotency-key-header:
+  I-D.meunier-web-bot-auth-architecture:
+  I-D.meunier-http-message-signatures-directory:
+  I-D.ietf-privacypass-batched-tokens:
+  I-D.ietf-privacypass-public-metadata-issuance:
+  I-D.jms-mole-architecture:
+  I-D.jms-mole-protocols:
+  AAP-CLAIMS:
+    title: "Identity Claims for the Agent Attestation Protocol"
+    author:
+      - { ins: R. Drapeau, name: Ryan Drapeau }
+      - { ins: D. Pettersson, name: David Pettersson }
+    date: false
+    target: https://agentic-protocols.github.io/agentic-attestation-protocol/draft-aap-identity-claims.html
+  AAP-LOCAL:
+    title: "Local Agent Profiles for the Agent Attestation Protocol"
+    author:
+      - { ins: R. Drapeau, name: Ryan Drapeau }
+      - { ins: D. Pettersson, name: David Pettersson }
+    date: false
+    target: https://agentic-protocols.github.io/agentic-attestation-protocol/draft-aap-local-agent.html
+  OIDC:
+    title: OpenID Connect Core 1.0
+    author:
+      - { ins: N. Sakimura, name: Nat Sakimura }
+      - { ins: J. Bradley, name: John Bradley }
+      - { ins: M. Jones, name: Michael B. Jones }
+      - { ins: B. de Medeiros, name: Breno de Medeiros }
+      - { ins: C. Mortimore, name: Chuck Mortimore }
+    date: 2014
+    target: https://openid.net/specs/openid-connect-core-1_0.html
+  OIDC-Discovery:
+    title: OpenID Connect Discovery 1.0
+    author:
+      - { org: OpenID Foundation }
+    date: false
+    target: https://openid.net/specs/openid-connect-discovery-1_0.html
+  RFC8414:
+
+--- abstract
+
+This document defines the core of the Agent Attestation Protocol (AAP): a way for a software agent to prove to a service that an accountable principal stands behind it, without revealing who. The credential the agent presents is the Agent Attestation Token (AAT): a short-lived, anonymous, unlinkable Privacy Pass token, issued by the principal's identity provider under a standing authorization and blindly signed, so the issuer cannot link a token to the principal who obtained it. The AAT attests exactly one thing — an accountable principal stands behind the presenting agent — and carries nothing else: no name, no fact, no handle that resolves to a person. Any party on the request path can verify it offline against the issuer's published keys.
+
+This document specifies the AAT's format, its issuance under a platform enrollment and a per-principal linking grant, its presentation alongside a Web Bot Auth request signature, and its verification. Companion documents extend this core: an identity claims module for consent-gated disclosure of facts about the principal, and a local-agent module for agents that run on hardware the platform does not control.
+
+--- middle
+
+# Introduction {#intro}
+
+Software agents arrive at the front door of services — websites, APIs, merchants — acting on behalf of a person. A service that wants to serve them has one decision to make at that door: admit this request, or not. AAP gives that decision a clean answer. From a single credential the agent presents, a service learns that an accountable principal stands behind the agent. It verifies that credential locally against the issuer's published keys and decides admission on accountability alone, holding no fact or handle that resolves to a person.
+
+That one property is enough for the door. A service deciding whether to serve, rate-limit, or refuse a request needs to know that a real party — reachable, and vouched for by a named issuer — stands behind the agent, not who that party is.
+
+The core protocol delivers four properties:
+
+- **Anonymous.** The credential presented at the door — the Agent Attestation Token (AAT) — names no one and carries no fact about anyone. It is a Privacy Pass token ({{RFC9576}}, {{RFC9577}}, {{RFC9578}}), issued by blind signing so the issuer cannot link a token to the principal who obtained it, and unlinkable across the parties that redeem and observe it.
+
+- **Accountable.** Behind the anonymity stands a named issuer — the principal's own identity provider — that authenticated a real principal, authorized the agent platform to represent them, applies its eligibility and rate-limiting policy at issuance, and answers for the population of agents it admits.
+
+- **Verifiable by anyone, offline.** Any party on the request path — an edge intermediary or the destination service — verifies the AAT against the issuer's published keys and a trust policy the verifier configures in advance. Each check is local: no per-check call and no online issuer dependency at request time.
+
+- **Pooled and challenge-responsive.** The agent obtains AATs ahead of contact and, when a verifier challenges for one, answers from its pool. Admission needs one challenge-and-retry round trip with the service, and no synchronous issuance round trip at the door.
+
+These properties are structural, not policy promises. The token carries nothing to read and nothing the issuer can resolve to a person.
+
+AAP composes existing layers. The AAT is a Privacy Pass token; the per-request signature that binds it to the presenting agent, and that establishes which software is calling, is Web Bot Auth ({{I-D.meunier-web-bot-auth-architecture}}) over HTTP Message Signatures ({{RFC9421}}). What this core adds is the meaning bound to the token — a named, accountable issuer whose vouch it carries — and the enrollment, linking, issuance, presentation, and verification procedures around it.
+
+## Scope and Modules {#scope}
+
+This document is the AAP core and is freestanding: an implementation conforms to it alone ({{conformance}}). It normatively defines the attestation layer — the AAT's format, its anonymous issuance, its presentation alongside a Web Bot Auth signature, and offline verification.
+
+Companion documents layer additional capability on this core without changing it:
+
+- **Identity claims** ({{AAP-CLAIMS}}): consent-gated disclosure of specific facts about the principal — a verified email, an address, an age — requested by a service and brokered by the agent. The AAT itself never carries such facts ({{prohibited-content}}).
+
+- **Local agents** ({{AAP-LOCAL}}): profiles for agents whose request-signing key lives on hardware the platform does not control — a platform's desktop or CLI surface, or an agent with no platform at all.
+
+The core provides two extension points the modules build on: the issuer metadata document accepts additional members ({{issuer-metadata}}), and the linking ceremony ({{identity-linking}}) is the anchor to which a module can attach further standing authorizations. A module states its own amendments; this core does not depend on any module.
+
+## Non-Goals {#non-goals}
+
+The following are out of scope and owned by neighboring layers. Agent-software identity — which vendor's software is calling — is established by Web Bot Auth beneath AAP ({{architecture}}), not by the AAT. Edge anti-abuse policy — how a CDN or WAF scores and throttles traffic — consumes the attestation but remains the edge's own decision. Domain transaction semantics — what a checkout, booking, or API call means and how the service authorizes it — are the service's concern; AAP carries no transaction.
+
+Delegated authority — the specific actions the principal authorized the agent to perform — is deferred to a future revision and in scope for it. It composes as a neighboring layer keyed to the same agent: authority travels in its own credential, bound to the Web Bot Auth key the AAT and the request signature already use, and addressed to a single resource.
+
+## Conformance {#conformance}
+
+An implementation conforms to AAP by implementing this core. Each module defines its own conformance on top of the core; the announceable surface of a deployment is the core plus whichever modules it ships.
+
+## Requirements Language {#requirements-language}
+
+The key words "MUST", "MUST NOT", "REQUIRED", "SHALL", "SHALL NOT", "SHOULD", "SHOULD NOT", "RECOMMENDED", "NOT RECOMMENDED", "MAY", and "OPTIONAL" in this document are to be interpreted as described in BCP 14 {{RFC2119}} {{RFC8174}} when, and only when, they appear in all capitals, as shown here.
+
+## Terminology {#terminology}
+
+- Principal: the authority on whose behalf the agent acts; today, the human behind it. Authorizes issuance.
+
+- Agent: software acting on the principal's behalf; the running instance in one session. Holds the agent key that its attestation and requests are bound to.
+
+- Agent Platform: the vendor or operator of the agent software. Enrolled with the issuer ({{platform-enrollment}}) and holds the standing relationship with it; persists across sessions, where the agent does not.
+
+- Issuer: the identity provider that vouches for the principal. Authenticates the principal, enforces its issuance policy, and runs the anonymous token issuance protocol. In this revision the Issuer also performs the Privacy Pass Attester role; splitting them is an extension ({{trust-model}}).
+
+- Verifier: any party that validates an AAT. Makes no online call to the issuer to verify a token, but needs the issuer's public keys and a trust policy configured ahead of time.
+
+- Edge: an intermediary on the request path, such as a CDN, WAF, or CAPTCHA provider.
+
+- Service: the destination the agent acts against, such as a merchant or an API. Decides its own trust policy.
+
+- AAT: the Agent Attestation Token, the anonymous credential defined in {{aat}}.
+
+Examples use domain names reserved by {{RFC2606}} and identifiers that are not registered assignments.
+
+# Architecture and Layer Model {#architecture}
+
+Agent traffic at the front door is governed by a stack of layers, each answering one question. This core occupies the attestation layer. It depends on the agent-software identity layer below it, delegates account authentication and authorization to OAuth and its kin above it ({{authn-coexistence}}), and defers the authority layer ({{non-goals}}).
+
+| Layer | Question it answers | Mechanism |
+|---|---|---|
+| Agent-software identity | Which software is calling? | Web Bot Auth / HTTP Message Signatures ({{RFC9421}}); for device-resident agents, a platform key endorsement ({{AAP-LOCAL}}) |
+| **Front-door attestation (this document)** | **Is an accountable principal behind this agent?** | **AAT — anonymous Privacy Pass token + Web Bot Auth signature** |
+| Identity disclosure (module) | Who is the principal, and what about them? | Consented disclosure lanes ({{AAP-CLAIMS}}) |
+| Account authentication and authorization | Is this a known account, and what is it permitted? | Delegated to OAuth and OpenID Connect, unchanged ({{authn-coexistence}}) |
+| Delegated authority | What may the agent do? | Deferred ({{non-goals}}) |
+
+The governing split: the front door is anonymous. At the door, the AAT attests an accountable principal and admission turns on that alone; no fact about the principal travels there. One agent key carries the work of both bottom layers: the Web Bot Auth signature that establishes which software is calling also binds the AAT to the presenter, so the agent proves possession once and needs no second credential at the door.
+
+A service that maintains its own accounts can offer the account-authenticated posture beside the anonymous door; the choice between them belongs to the agent ({{authn-coexistence}}).
+
+# Protocol Overview {#overview}
+
+This section is non-normative.
+
+The core has four phases. Enrollment and linking happen ahead of everything; provisioning and admission recur.
+
+1. **Enrollment (once, per platform).** Ahead of any principal, the agent platform is admitted to the issuer's allow-list through an out-of-band review, with the OAuth client identity it will authenticate under pinned ({{platform-enrollment}}). This is operator vetting between two organizations, not a per-user step.
+
+2. **Linking (once, per principal).** The principal authenticates to their issuer and authorizes an enrolled agent platform to obtain attestations on their behalf, establishing a standing linking grant ({{identity-linking}}). This is the consent anchor for everything downstream.
+
+3. **Provisioning (ahead of use).** Under that grant, the agent obtains a pool of anonymous AATs by blind issuance: the issuer signs tokens it cannot later link to a redemption ({{token-issuance}}). Provisioning ahead of contact is what lets the agent answer a verifier's challenge from its pool with no synchronous issuance round trip at the door.
+
+4. **Admission (at the front door).** On first contact the service challenges for an AAT, and the agent presents one from its pool accompanied by a Web Bot Auth signature over the request ({{presentation}}). Any party on the path — edge or service — verifies the token offline against the issuer's published keys ({{verification}}), learns that an accountable principal is behind the agent, and admits the request. The verifier then establishes its own session for the rest of the interaction ({{session-establishment}}).
+
+~~~ aasvg
+  Principal     Agent (platform)       Issuer     Service / Verifier
+      P                AP                 I                S
+      |                 |                 |                |
+[        Note over AP,I: 1. Enrollment (once, per platform)         ]
+      |                 |--(1)----------->|                |
+      |                 |<~(2)~~~~~~~~~~~~|                |
+[         Note over P,I: 2. Linking (once, per principal)           ]
+      |--(3)------------+---------------->|                |
+      |                 |<~(4)~~~~~~~~~~~~|                |
+[          Note over AP,I: 3. Provisioning (ahead of use)           ]
+      |                 |--(5)----------->|                |
+      |                 |<~(6)~~~~~~~~~~~~|                |
+[             Note over AP,S: 4. Admission (front door)             ]
+      |                 |--(7)------------+--------------->|
+      |                 |<~~~~~~~~~~~~~~~~+~~(8)~~~~~~~~~~~|
+      |                 |--(9)------------+--------------->|
+      |                 |                 |                |--(10)-+
+      |                 |                 |                |<------+
+      |                 |<~~~~~~~~~~~~~~~~+~~(11)~~~~~~~~~~|
+
+Legend: ----> message; ~~~~> response; +--+ self-call
+
+Messages:
+(1) AP -> I: enroll out of band (allow-list; pin client identity)
+(2) I ~> AP: enrolled client identity
+(3) P -> I: authenticate; authorize representation
+(4) I ~> AP: standing linking grant
+(5) AP -> I: request tokens under grant (blind issuance)
+(6) I ~> AP: pool of anonymous AATs
+(7) AP -> S: request + Web Bot Auth signature
+(8) S ~> AP: 401 PrivateToken challenge (accepted issuers)
+(9) AP -> S: retry + AAT from pool + Web Bot Auth signature
+(10) S -> S: verify AAT offline (no issuer call)
+(11) S ~> AP: admitted; verifier session established
+~~~
+{: #fig-protocol-overview
+   title="AAP core overview"
+   suppress-title="true"
+   align="center"
+   artwork-alt="Sequence diagram of platform enrollment, principal linking, token provisioning, and front-door admission." }
+
+*Figure: the common arc — link once, provision a pool, admit anonymously.*
+
+# The Agent Attestation Token (AAT) {#aat}
+
+The AAT is an anonymous, unlinkable token establishing only that a trusted issuer vouches for an accountable principal behind this agent. It names no principal and carries no facts, by construction: it is a Privacy Pass token, not an identity document. The governing principle:
+
+> Attestation is ambient and anonymous; identity is requested and consented. The credential that travels to every party on the request path carries no facts and no handle that resolves to a person.
+
+The AAT carries no handle for any party to observe across requests or for the issuer to resolve, so the front door presents no correlation surface.
+
+## Format {#format}
+
+An AAT is a Privacy Pass token ({{RFC9576}}, {{RFC9577}}, {{RFC9578}}), profiled for agent attestation. Implementations MUST support the publicly verifiable token type (Blind RSA, type `0x0002`, Section 8.2.1 of {{RFC9578}}), so that any verifier holding the issuer's public key verifies a token offline, without contacting the issuer and without being the issuer. The privately verifiable type (VOPRF, `0x0001`) requires the verifier to be the issuer and so MUST NOT be used for ambient attestation, where the verifier and issuer are different parties by assumption.
+
+A redeemed AAT is the 0x0002 Token structure of Section 2.2 of {{RFC9577}}:
+
+~~~
+struct {
+    uint16_t token_type = 0x0002;   // publicly verifiable, Blind RSA
+    uint8_t  nonce[32];             // fresh per token; the unlinkable element
+    uint8_t  challenge_digest[32];  // SHA-256 of the TokenChallenge it answers
+    uint8_t  token_key_id[32];      // identifies the issuer key (-> public key)
+    uint8_t  authenticator[Nk];     // Blind RSA signature over the token input
+} Token;
+~~~
+
+The token carries no JOSE header, no claims, no issuer URL, no subject, and no expiry of its own: it is opaque bytes whose only verifiable assertion is "a key the verifier trusts signed this, over a challenge the verifier recognizes." Everything semantic — which issuer, what it attests, which agent key it is bound to — comes from the `token_key_id` (which resolves to a trusted issuer key, {{issuer-keys}}) and the `TokenChallenge` it answers ({{presentation}}). There is no version field; a new profile uses a new `token_type` or a new issuer key namespace.
+
+## What the AAT Asserts {#assertion}
+
+A valid AAT asserts exactly one thing: *a trusted issuer admitted an accountable principal behind this agent at issuance time.* "Accountable" is an issuance-time property, not a post-hoc one: the issuer authenticated a real principal who authorized representation ({{identity-linking}}), applied its eligibility and rate-limiting policy, and answers for the population of agents it admits. It does **not** mean the issuer can later point at a specific redeemed token and name the principal behind it — blind issuance forecloses exactly that ({{token-issuance}}). Where a verifier needs answerability tied to a specific interaction (a name on an order, a dispute trail), that comes from a consented disclosure, never from the AAT ({{prohibited-content}}). The verifier learns no more than this admission bit, plus whatever coarse, non-identity class the issuer may encode via the public-metadata extension ({{public-metadata}}).
+
+This is the assertion the front door needs: not *who* is behind the agent, but *that the issuer admitted an accountable party behind it*. It is the anti-abuse and admission decision, and it is answerable anonymously.
+
+## Public Metadata {#public-metadata}
+
+The base Blind RSA token type (`0x0002`) has no public-metadata field; metadata is not something a verifier can read off a plain `0x0002` token. An issuer that needs to convey a coarse, **non-identity** class (for example an assurance tier such as "the principal completed identity verification") MUST do so through the Privacy Pass public-metadata issuance extension ({{I-D.ietf-privacypass-public-metadata-issuance}}), which defines its own token type carrying a `metadata` field threaded through blind signing; AAP profiles that token type when metadata is used and pins the permitted value set. This is OPTIONAL and an extension to the core.
+
+When used, the metadata value MUST be low-cardinality and MUST NOT carry any per-principal value or identity fact: every distinct value a verifier can read partitions the anonymity set, and a high-cardinality or principal-specific value reintroduces the fingerprinting surface the anonymous token exists to remove ({{privacy}}). An issuer SHOULD treat the number of distinct values as a privacy budget and keep it to single digits. An identity predicate (an age threshold, residency) is a fact about a person, not a class, and is prohibited content ({{prohibited-content}}).
+
+## Prohibited Content {#prohibited-content}
+
+The attestation layer MUST NOT carry, and verifiers MUST NOT expect it to carry:
+
+- Identity facts: an email address, name, phone number, postal address, birthdate, exact age, identity-verification evidence, or any other attribute of the principal. Disclosure of such facts is the identity claims module's business ({{AAP-CLAIMS}}). A coarse, non-identity assurance class via the public-metadata extension ({{public-metadata}}) is the one bounded exception, and is a class, not a fact about a person.
+
+- Any stable or resolvable handle: a subject, an account identifier, a session identifier, or any value — in the token or in metadata — that is stable across tokens or that the issuer can resolve to a principal. The token's only per-token element is the random `nonce`, which the issuer never sees in the clear ({{token-issuance}}) and so cannot resolve.
+
+The structural point makes the prohibition enforceable: a Privacy Pass token has nowhere to put a fact, and its issuance protocol hides the token from the issuer, so the prohibition is a property of the format itself, not a rule a verifier must trust the issuer to follow. Every bit readable across sites is fingerprinting entropy, and a per-session handle the issuer can resolve is the same hazard in another form; the attestation layer carries the one bit the front door needs and not a bit more.
+
+## Issuance {#issuance}
+
+Issuance rests on two relationships at different cadences: a one-time, out-of-band platform enrollment ({{platform-enrollment}}) and a per-principal interactive linking ({{identity-linking}}). A token issues only where both stand.
+
+### Platform Enrollment {#platform-enrollment}
+
+Enrollment is the issuer's standing decision about which operators it will vouch for: the agent platform is typically admitted to a curated allow-list through an out-of-band review (a business agreement and a technical onboarding), not a self-service registration, once per (platform, issuer) pair. A platform MAY enroll with more than one issuer. Enrollment is the precondition for linking: an issuer MUST NOT accept a linking grant ({{identity-linking}}) for a platform that is not enrolled, and MUST authenticate the platform under its pinned client identity at linking and at issuance ({{token-issuance}}).
+
+Enrollment pins, for that platform:
+
+- **An OAuth client identity** under which the platform conducts linking ceremonies ({{identity-linking}}) and authenticates at issuance ({{token-issuance}}). Asymmetric client authentication (the `private_key_jwt` assertion of {{RFC7523}}) is RECOMMENDED where the platform is a confidential client: no shared secret to leak, and the platform proves itself with a key the issuer pinned. This identity is what lets a principal later grant `aap:represent` to a named, enrolled platform rather than to a string a requester asserts.
+
+- **The platform's issuance policy**: issuance rate, batch size, and any issuer-wide token-key epochs it may draw against ({{token-issuance}}, {{issuer-keys}}).
+
+- **Optional software-identity metadata**, such as the platform's Web Bot Auth key directory ({{I-D.meunier-web-bot-auth-architecture}}). The enrolled OAuth client identity is the issuer-facing platform identity; the verifier-facing software identity is carried separately by Web Bot Auth ({{architecture}}, {{presentation}}). An issuer MAY record the directory at enrollment as a consistency check between the two identities; the AAT does not carry it, and keeping platform identity out of the AAT entirely is the rule stated below.
+
+Enrollment is operator vetting, not attestation delegation. The issuer remains its own Attester ({{trust-model}}) and checks principal-accountability itself at linking; what enrollment adds is the other half of that accountability: issuance is limited to operators the issuer has vetted and can hold to a contract. The principal's authentication ({{identity-linking}}) and the platform's vetting together back the one thing a verifier reads off an AAT: an accountable principal stands behind this agent.
+
+Platform identity belongs to the agent-software identity layer, where Web Bot Auth identifies which software or operator is making the request ({{architecture}}, {{presentation}}). The AAT MUST NOT also encode it: the issuer MUST NOT key tokens per platform, MUST NOT assign token keys or epochs in a way that distinguishes platforms at redemption ({{issuer-keys}}), and MUST NOT encode a platform identifier in public metadata ({{public-metadata}}). Any of these would make platform identity a property of the anonymous credential, duplicating the Web Bot Auth layer and partitioning the token's redemption anonymity set (Sections 6.1 and 6.2 of {{RFC9576}}; {{privacy}}). Platform identity lives in enrollment, issuance authorization, and Web Bot Auth; blind signing ({{token-issuance}}) collapses it out of the AAT before redemption.
+
+De-listing a platform ends issuance for all of its agents at once, the coarse companion to a principal revoking a single grant ({{identity-linking}}). It does not reach AATs already pooled, which, being unlinkable, the issuer cannot single out; token-key rotation ({{issuer-keys}}, {{session-establishment}}) bounds that residue, as it does after an individual revocation.
+
+### Identity Linking {#identity-linking}
+
+Before any AAT is issued for a principal, the principal explicitly links an enrolled platform ({{platform-enrollment}}) to the issuer: an OAuth grant carrying a dedicated AAP scope (`aap:represent`, "agents of this platform may represent me"), obtained at the issuer's own OAuth authorization server and bound to the platform's enrolled client identity. The grant binds a specific principal to a specific enrolled platform, so the issuer shows that platform's verified identity at consent rather than a name the requester asserts. For CLI and headless agents, the Device Authorization Grant ({{RFC8628}}) is the natural ceremony; for app-embedded agents, the authorization code flow.
+
+The linking ceremony MUST make plain that what is being granted is ongoing representation on the internet, not a one-time login, and that the platform's agents will obtain attestation tokens under it without further interaction. A principal MAY link more than one issuer and MAY revoke the grant at any time, which ends issuance under it immediately; de-listing the platform ({{platform-enrollment}}) ends issuance for every principal who linked it.
+
+Linking is the only interactive ceremony this core asks of the principal. Once the grant stands, agents obtain AATs freely under it: an AAT carries no facts and names no one ({{prohibited-content}}), so there is nothing to approve per token.
+
+Linking is also the anchor for modules. A module that needs a standing, per-principal authorization — the identity claims module captures the principal's disclosure policy here ({{AAP-CLAIMS}}) — attaches its capture to this ceremony, because the anonymous front door offers no later handle to attach one to. Such amendments are defined by the module, not by this document.
+
+### Token Issuance {#token-issuance}
+
+The agent obtains AATs from the issuer's issuance endpoint using a Privacy Pass issuance protocol ({{RFC9578}}, Blind RSA), authenticating with the access token of the linking grant. Two properties of blind issuance are load-bearing here:
+
+- **The issuer signs blindly.** The agent blinds its token request before sending it; the issuer signs the blinded message and never sees the finished token. Even though the agent authenticates as a known principal at issuance, the issuer cannot recognize the resulting token when it is later redeemed: issuance and redemption are unlinkable ({{privacy}}). What the issuer learns at issuance is only that this principal obtained tokens, at this time — never where they are spent.
+
+- **Tokens are pooled against a stable challenge.** The profile fixes a *stable* `TokenChallenge` (fixed `issuer_name`, empty `origin_info`) that the agent pools tokens against ahead of contact and that a verifier advertises at the door ({{presentation}}), so a whole pool of tokens shares one `challenge_digest` and can be redeemed against any verifier that accepts this issuer; origin-driven Privacy Pass, by contrast, supplies a fresh `TokenChallenge` per redemption. Freshness and origin-binding are therefore **not** provided by the Privacy Pass layer in the pooled mode; they come from the Web Bot Auth signature on each request ({{presentation}}) and the verifier's double-spend cache ({{verification}}). Whether the agent additionally commits its key into the challenge's `redemption_context` to make tokens non-transferable is the binding choice analyzed in {{token-binding}}.
+
+To avoid an issuance round trip on the request path and to break timing correlation between issuance and redemption, the agent SHOULD obtain AATs in batches (a token pool) ahead of use and draw from the pool to redeem. The issuer applies its own per-principal issuance policy (rate, batch size) under the linking grant. Because tokens are single-use ({{verification}}), the pool is consumable inventory; the agent refills it as it depletes. Generic Token Batch Issuance (Section 6 of {{I-D.ietf-privacypass-batched-tokens}}) fills a pool in one exchange and carries the Blind RSA token type that AAP mandates ({{format}}); the amortized variant (Section 5) does not support Blind RSA and does not apply. An issuer MAY instead serve the pool through repeated single-token issuance ({{RFC9578}}).
+
+Blind issuance protects the principal only while the blinding stays with the agent. The following hold however issuance traffic reaches the issuer, whether the agent calls the issuance endpoint directly or its platform or another intermediary relays for it:
+
+- The agent that will redeem a token MUST generate the token request and perform the blinding and unblinding itself. Only blinded token requests and blinded signatures leave the agent; finished tokens exist only at the agent.
+
+- An agent platform or other intermediary that relays issuance traffic MUST NOT require the agent to reveal unblinded token material (token nonces or finished tokens) as a condition of relay. A relay that holds unblinded material can recognize the token at redemption, which is the linkage blind issuance exists to prevent.
+
+- Pooled tokens belong to the agent that obtained them. An agent platform MUST NOT move tokens between agent instances; the pool's custody boundary follows the agent key's ({{token-binding}}).
+
+~~~ aasvg
+  Principal      Agent Platform         Agent        Issuer (IDP)
+      P                AP                 A                I
+      |                 |                 |                |
+[    Note over AP,I: once per platform: enrollment (out of band)    ]
+      |                 |--(1)------------+--------------->|
+      |                 |<~~~~~~~~~~~~~~~~+~~(2)~~~~~~~~~~~|
+[     Note over P,I: once per principal: identity linking           ]
+      |                 |--(3)------------+--------------->|
+      |<----------------+-----------------+--(4)-----------|
+      |--(5)------------+-----------------+--------------->|
+      |                 |<~~~~~~~~~~~~~~~~+~~(6)~~~~~~~~~~~|
+[ Note over A,I: ahead of use: fill the token pool (blind issuance) ]
+      |                 |                 |--(7)---------->|
+      |                 |                 |                |--(8)--+
+      |                 |                 |                |<------+
+      |                 |                 |<~(9)~~~~~~~~~~~|
+
+Legend: ----> message; ~~~~> response; +--+ self-call
+
+Messages:
+(1) AP -> I: enroll out of band (allow-list; pin client identity)
+(2) I ~> AP: enrolled client identity
+(3) AP -> I: request link (OAuth, aap:represent scope)
+(4) I -> P: approve representation?
+(5) P -> I: approve
+(6) I ~> AP: linking grant
+(7) A -> I: blinded token requests (under the grant)
+(8) I -> I: authenticate principal; sign blindly (never sees tokens)
+(9) I ~> A: blinded signatures -> agent unblinds into a pool of AATs
+~~~
+{: #fig-token-issuance
+   title="The platform is enrolled once, out of band; each principal then links it; the agent fills a pool of anonymous AATs by blind issuance. The issuer authenticates the principal at issuance but cannot link any token to its redemption."
+   align="center"
+   artwork-alt="Sequence diagram in which an enrolled platform links a principal and an agent obtains blindly signed AATs from the issuer." }
+
+### Token Binding and Theft Resistance {#token-binding}
+
+A redeemed Privacy Pass token is a bearer artifact: the question is whether a captured token can be replayed, and by whom. AAP defines two modes; a deployment chooses between them per the trade-offs below.
+
+**Bearer mode (RECOMMENDED, the default Privacy Pass posture).** The `redemption_context` is empty, so tokens are poolable and genuinely unlinkable ({{privacy}}). Theft resistance rests on the same three things deployed Privacy Pass relies on: tokens are single-use, so a token spent once is rejected on re-presentation at that verifier ({{verification}}); issuance is rate-limited per principal under the linking grant ({{token-issuance}}); and the Web Bot Auth signature ({{presentation}}) covers the `Authorization` header, so a party that observes a token in transit cannot splice it into a different request. What the empty `redemption_context` does not do is bind the token to the presenter's key: a captured token can be replayed by re-signing a fresh request under a different key, because a bearer AAT proves "an accountable principal was admitted," not "this presenter is that principal." Whether that replay is open to an arbitrary party or only to a recognized agent is a verifier-policy choice: a verifier that requires the signing key to resolve to an accepted agent through the Web Bot Auth directory ({{architecture}}) forces a thief to sign under a key it accepts — so the replaying party is itself an accountable, identifiable operator — whereas a verifier that admits any valid signature leaves the token replayable by anyone who captures it. Either way single-use bounds theft to one redemption per stolen token per verifier and issuance rate limits bound volume theft of a pool; a deployment that needs the token itself to be non-transferable uses the key-bound mode below. For an admission gate this is the standard and sufficient posture.
+
+**Key-bound mode (OPTIONAL, non-transferable tokens).** A deployment that needs a token to be unusable by anyone but the agent that obtained it MAY commit the agent key into the challenge: set `redemption_context` (32 bytes) to the raw {{RFC7638}} SHA-256 thumbprint of the agent's Web Bot Auth key — the thumbprint is itself 32 bytes; do not use the longer base64url `kid` text. All of an agent's pooled tokens then share one `challenge_digest` derived from its own key, and at redemption the verifier reconstructs the expected `TokenChallenge` from the thumbprint of the key that signed the request, rejecting a token whose `challenge_digest` does not match ({{verification}}). A stolen token is then inert to any party that cannot sign under that key. The key-bound AAT needs no separate proof artifact: possession is demonstrated by the Web Bot Auth signature already on the request ({{presentation}}), where DPoP ({{RFC9449}}) would add a per-request proof JWT.
+
+The agent SHOULD use a distinct agent key per origin it visits, so the key itself is not a cross-origin correlator.
+
+## Presentation {#presentation}
+
+AAP is **challenge-driven**: a verifier that requires an AAT MUST request it by responding to the agent's request with a `401` carrying a Privacy Pass challenge (Section 2.1 of {{RFC9577}}), and the agent answers from its pool. An agent is not expected to volunteer an AAT unprompted, though it MAY as an optimization ({{proactive-presentation}}).
+
+~~~
+HTTP/1.1 401 Unauthorized
+WWW-Authenticate: PrivateToken challenge=<base64url stable TokenChallenge>, \
+  token-key=<base64url issuer public key>, \
+  max-age=300
+~~~
+
+The challenge also tells the agent which issuers the verifier trusts — a verifier that accepts more than one advertises a `PrivateToken` challenge per issuer in the `WWW-Authenticate` header (Section 2.1.2.1 of {{RFC9577}}), each with that issuer's stable `TokenChallenge` and key. The agent can then answer with a token it already holds from an accepted issuer, or prompt its principal to link one if it holds none ({{identity-linking}}).
+
+The same `401` can also carry the service's conventional authentication challenges — an OAuth `Bearer` or `DPoP` challenge — beside these; how the identified and anonymous postures coexist, and how the agent chooses between them, is discussed in {{authn-coexistence}}.
+
+AAP deviates from origin-driven Privacy Pass in what the challenge may contain, not in who initiates it. The advertised `TokenChallenge` MUST use the **stable** parameters this profile pools against (fixed `issuer_name`, empty `origin_info`, and the `redemption_context` of the binding mode in force, {{token-binding}}), and a verifier MUST NOT vary it per request — in particular, MUST NOT set a fresh per-request `redemption_context`, the field origin-driven Privacy Pass uses to carry challenge freshness. A fresh per-request challenge would invalidate every pooled token and force a synchronous issuance round trip at the door; the stable challenge is what lets the agent answer from a pre-provisioned pool. Because the challenge therefore carries no freshness, replay defense and origin-binding come from the Web Bot Auth signature on the agent's response ({{verification}}) and the verifier's double-spend cache, not from the Privacy Pass layer.
+
+The agent answers the challenge by redeeming a pooled token in the `Authorization` header per RFC 9577, accompanied by a Web Bot Auth HTTP Message Signature ({{RFC9421}}, {{I-D.meunier-web-bot-auth-architecture}}) made with its agent key:
+
+~~~
+POST /checkout HTTP/1.1
+Host: merchant.example
+Authorization: PrivateToken token=<base64url Token>
+Content-Type: application/json
+Content-Digest: sha-256=:X48E9qOokqqrvdts8nOJRJN3OWDUoyWxBf7kbu9DBPE=:
+Signature-Input: agent=("@method" "@authority" "@path" "authorization" \
+  "content-digest");created=1715400030;expires=1715400090; \
+  keyid="agent_kid_b64url...";tag="web-bot-auth"
+Signature: agent=:<signature by the agent key>:
+
+{"item": "sku-12345", "quantity": 1}
+~~~
+{: #fig-aat-presentation title="An agent's response to a verifier's challenge. A redeemed AAT presented with a Web Bot Auth signature: the token attests an accountable principal is behind the agent; the signature proves the presenter holds the agent key, confines the request to this method, host, and path, and (in the key-bound mode) matches the key the token commits to." }
+
+The profile:
+
+- The signature MUST cover at least `@method`, `@authority`, `@path`, the `Authorization` header (so the token cannot be lifted under a valid signature), and, when there is a body, its `Content-Digest` ({{RFC9530}}). Covering `@authority` confines a captured request to the host it was sent to. The signature carries `created`/`expires` bounding a short window (RECOMMENDED at most 60 seconds), a `keyid` equal to the {{RFC7638}} thumbprint of the agent key, and the tag `web-bot-auth`.
+
+- In the key-bound mode ({{token-binding}}), the `keyid` agent key MUST be the key the token's `redemption_context` commits to, and a verifier MUST reject the pair if the token's `challenge_digest` does not reconstruct from it ({{verification}}). In the bearer mode there is no such commitment; the signature's coverage of the `Authorization` header still prevents an on-path party from lifting the token into a different signed request, and single-use plus the double-spend cache bound replay.
+
+- Because the Privacy Pass layer supplies no freshness in this mode, the signature's short `created`/`expires` window and the verifier's double-spend cache ({{verification}}) are the replay defense; a verifier MAY additionally require a `nonce` signature parameter via its challenge. The agent SHOULD use a distinct agent key per origin, so the key is not a cross-origin correlator.
+
+- The request MUST be sent over TLS.
+
+AAP uses the agent's existing Web Bot Auth signature as the possession proof: in the bearer mode it provides request integrity and confines the token to the signed request, and in the key-bound mode it is additionally the key the token commits to. Agent-software identity (which operator is calling) is carried by the Web Bot Auth layer and its key directory, not by the AAT; a verifier that needs the operator reads it there, and the AAT stays silent on it. The layers remain separate on the wire as in the architecture. Where the agent's key lives on hardware the platform does not control, the platform's endorsement of that key is profiled in {{AAP-LOCAL}}.
+
+### Proactive Presentation {#proactive-presentation}
+
+An agent MAY present an AAT without waiting for a challenge when it already knows a verifier requires one, purely to save the challenge round trip. This is an agent-policy choice and is never required, and it spends a pooled token even where the verifier would not have required one. A verifier that would have challenged for the token's issuer admits the request directly, saving the round trip; a verifier that would not have challenged ignores the unsolicited token. Because the agent cannot learn the verifier's accepted-issuer set until it sees a challenge, a proactively presented token from an unaccepted issuer MUST be answered with the `401` challenge of {{presentation}}, and the agent falls back to the challenge exchange. Recognizing agent traffic in order to route it, rather than to gate it, is a separate concern carried by the Web Bot Auth signature, not by a proactively presented AAT ({{architecture}}).
+
+### Session Establishment {#session-establishment}
+
+The AAT bootstraps; it is not a session. This matters more than in a multi-use design, because a Privacy Pass token is single-use ({{verification}}): the natural shape is to redeem one AAT at first contact and let the verifier establish its own session for the rest of the interaction.
+
+- A verifier SHOULD establish its own session after redeeming an AAT, in whatever form its architecture already uses (a cookie, a bearer token, a header of its choosing). Subsequent requests ride that session credential; no further AAT is redeemed. Note that this session is itself the correlation scope for that verifier: the AAT is unlinkable, but once a session is bound to the agent's key and activity, that verifier correlates everything within it. The privacy boundary is per-verifier and per-agent-key; an agent limits cross-context correlation by using distinct keys and not carrying a session beyond its purpose.
+
+- A stateless verifier that establishes no session re-challenges per request, and the agent redeems a fresh token from its pool each time. This is the costly path — one token per request, and an issuance pipeline to keep the pool filled — and an issuer serving such verifiers MUST provision issuance capacity accordingly. Edges that verify statelessly are the case to watch; services almost always establish sessions.
+
+- The session stands on the verifier's own policy: the verifier MAY re-challenge for a fresh AAT at any point (a sensitive action after a quiet interval being the obvious moment).
+
+- Revoking the linking grant ({{identity-linking}}) stops new issuance at once, but does not reach AATs already in the agent's pool — which, being unlinkable, the issuer cannot identify to revoke — nor sessions a verifier already established. Short pool lifetimes (an issuer MAY scope issued tokens to a key epoch and rotate, {{issuer-keys}}) bound the first; re-challenging on sensitive actions bounds the second. Targeted revocation of an individual outstanding token is not possible by construction and is out of scope; this is a cost of unlinkability ({{security}}). Where a module grants further standing authority under the same linking grant, revocation reaches it per that module's rules.
+
+- A retry after a lost response re-presents a spent token and fails the double-spend check ({{verification}}); the agent SHOULD retry with a fresh AAT from its pool. The check deduplicates tokens, not operations: a service MUST NOT rely on it for request idempotency. Exactly-once semantics come from a client-supplied idempotency key at the request-processing layer (for example {{I-D.ietf-httpapi-idempotency-key-header}}).
+
+Whether to require an AAT at all is the verifier's own policy; a verifier that does require one MUST challenge for it with the `401` `PrivateToken` challenge above ({{presentation}}). In the common commerce shape: the edge verifies a redeemed AAT statelessly and passes traffic; the service redeems (or accepts the edge's assertion of) one AAT at first contact and sets the session cookie it would for any customer; from there the interaction is indistinguishable from a signed-in user.
+
+## Verification {#verification}
+
+Any party consuming an AAT MUST verify all of the following, failing closed at the first failure:
+
+1. Token structure and type. The `Authorization` header carries a `PrivateToken` of `token_type` `0x0002`; any other type presented as an AAT is rejected.
+
+2. Issuer trust and key resolution. The `token_key_id` resolves to a public key of an issuer this verifier trusts ({{issuer-keys}}). Keys are drawn only from trusted issuers before any signature work.
+
+3. Challenge match. The token's `challenge_digest` equals `SHA-256(TokenChallenge)` for the stable challenge parameters this profile pools against (fixed `issuer_name`, empty `origin_info`, and the `redemption_context` of the binding mode in force, {{token-binding}}). In the key-bound mode the expected `redemption_context` is reconstructed from the RFC 7638 thumbprint of the request's signing key, so this step also enforces the key binding. A token whose digest does not match was minted for some other context and is rejected.
+
+4. Token signature. The Blind RSA `authenticator` verifies under the resolved issuer key over the token input ({{RFC9578}}). Public metadata, if present, is read here ({{public-metadata}}).
+
+5. Request signature. The request carries a Web Bot Auth HTTP Message Signature ({{presentation}}) with tag `web-bot-auth`, covering the required components including the `Authorization` header, verifying under the agent key, within its `created`/`expires` window. In the bearer mode this signature is what prevents an on-path party from lifting the token into another request; in the key-bound mode the signing key's thumbprint must also reconstruct the token's `redemption_context` (step 3). Omitting this step reduces the AAT to an unbound bearer token usable by anyone who observes it.
+
+6. Double-spend. The token's `nonce` (with `challenge_digest`) has not been seen before. The verifier MUST keep a seen-token cache and reject a re-presented token; a token is single-use ({{RFC9577}}). Because this profile's `TokenChallenge` is stable and re-advertised indefinitely, the seen-token entry MUST be retained for as long as the token's key is accepted ({{issuer-keys}}); the challenge's `max-age` bounds only how long the verifier accepts the challenge ({{RFC9577}}), not the seen-token cache. Re-use of one token across requests is not legitimate; a fresh token is drawn per redemption, including for an honest retry after a lost response ({{session-establishment}}).
+
+What passing yields is exactly the attestation layer's promise and no more: a trusted issuer admitted an accountable principal behind this agent, the presenter holds the agent key (and, in the key-bound mode, the key the token commits to), and the token has not been spent. Who the principal is, and any fact about them, are outside this document.
+
+What a verifier does beyond the checklist is its own trust policy: which issuers and which public-metadata classes it accepts, whether a failed or absent AAT means blocking, challenging, or serving with reduced trust, and how it proceeds when an issuer's keys are unreachable and uncached. The protocol verifies; the verifier decides.
+
+# Discovery {#discovery}
+
+Discovery centers on the issuer, the one publisher whose capabilities matter to strangers. The core needs two things from it: the issuance endpoint agents call, and the public keys verifiers check tokens against.
+
+## Issuer Metadata {#issuer-metadata}
+
+An issuer publishes a configuration document at a well-known location under its identifier:
+
+~~~
+GET https://idp.example/.well-known/aap-issuer
+~~~
+
+~~~ json
+{
+  "issuer": "https://idp.example",
+  "token_issuance_endpoint": "https://idp.example/aap-issuer/issue",
+  "token_keys": "https://idp.example/.well-known/aap-issuer/token-keys"
+}
+~~~
+
+| Member | Meaning |
+|---|---|
+| `issuer` | The issuer's identifier. REQUIRED. MUST equal the origin the document was resolved from. |
+| `token_issuance_endpoint` | Where agents run blind issuance to fill their AAT pool ({{token-issuance}}). REQUIRED. |
+| `token_keys` | The issuer's Privacy Pass public keys, by `token_key_id`, for offline AAT verification ({{issuer-keys}}). REQUIRED. |
+
+The document is extensible: a module registers additional members (the identity claims module registers its endpoints and capability advertisement here, {{AAP-CLAIMS}}), and a consumer MUST ignore members it does not understand. Which modules an issuer offers is read from which members are present.
+
+All endpoints and key URLs MUST be same-origin as `issuer`, fetched over HTTPS with no cross-origin redirects and no IP-literal hosts; a verifier or agent MUST reject a document that names an off-origin endpoint. The document is cacheable per {{RFC9110}}.
+
+## Issuer Keys {#issuer-keys}
+
+The `token_keys` document carries the issuer's Privacy Pass public keys (Blind RSA, selected by `token_key_id`) for AAT verification. Keys rotate additively: the issuer publishes a successor before using it and retires a predecessor after a grace period longer than the longest outstanding token. Token-key rotation doubles as the coarse revocation lever for the unlinkable pool ({{session-establishment}}): retiring a token key invalidates every AAT signed under it. Consumers MUST fetch keys over HTTPS from the named host and MUST NOT follow cross-origin redirects or resolve IP-literal URLs.
+
+The agent's HTTP Message Signature uses an algorithm from the registry of {{RFC9421}}. Modules that define JWS-signed artifacts state their own algorithm profiles.
+
+# Trust Model {#trust-model}
+
+This section is informative.
+
+Privacy Pass defines four roles — Client, Attester, Issuer, and Origin ({{RFC9576}}). AAP maps them to its own terms: the Agent is the Client, the Service (or Edge) is the Origin and verifier, and the AAT Issuer is the Privacy Pass Issuer. In this revision the Issuer also performs the Attester role: the linking grant is the attestation that a real, consented principal is behind the agent, so a separate Attester is not required — the issuer is the principal's own IdP. Splitting Attester from Issuer — so that the party checking principal-accountability is not the party signing tokens — is a supported extension for deployments that want the issuer blind to the principal's identity even at issuance, at the cost of a third party. The unlinkability property holds in both arrangements: it is a property of blind issuance, not of the role split.
+
+AAP adds the platform to this role map: the principal is the subject of attestation, the platform is the enrolled operator the principal authorizes ({{platform-enrollment}}), and the agent is the Privacy Pass Client that obtains and spends tokens. The issuer's trust in the platform is operator vetting, not attestation (it attests the principal itself), and the platform's identity stays in the Web Bot Auth layer rather than the AAT ({{platform-enrollment}}, {{privacy}}).
+
+# Relationship to Existing Work {#related-work}
+
+This section is informative.
+
+The core is assembled almost entirely from existing work; its contribution is the composition and the governing split, not new cryptography.
+
+| Work | What it provides | How this document uses it |
+|---|---|---|
+| Privacy Pass ({{RFC9576}}, {{RFC9577}}, {{RFC9578}}) | Anonymous, unlinkable, publicly verifiable tokens via blind issuance | Profiled as the attestation layer: an AAT *is* a Privacy Pass token whose meaning is "an accountable principal backs this agent" ({{aat}}) |
+| Web Bot Auth / HTTP Message Signatures ({{RFC9421}}, {{I-D.meunier-web-bot-auth-architecture}}) | Proof of which software signed a request, under a directory-published key | Composed beneath AAP for agent-software identity, and reused as the per-request signature that binds the AAT to the presenting agent ({{presentation}}) |
+| OpenID Connect Discovery / OAuth AS Metadata ({{OIDC-Discovery}}, {{RFC8414}}) | Issuer-level `.well-known` capability document | The shape of the issuer metadata document ({{issuer-metadata}}) |
+| Public-metadata issuance ({{I-D.ietf-privacypass-public-metadata-issuance}}) | A coarse readable class threaded through blind signing | The optional non-identity assurance class on an AAT ({{public-metadata}}) |
+| MoLE ({{I-D.jms-mole-architecture}}) | Endorsements from Anchors that hide the issuing Anchor, redeemed for anonymous Credentials whose state a Moderator updates | Not used. A separate design for the same admission question ({{related-mole}}) |
+
+Privacy Pass gives unlinkable, offline-verifiable tokens as a primitive; AAP supplies the trust framework around them: a named, accountable issuer whose vouch the token carries. What is new is the *meaning* bound to a Privacy Pass token, and the discipline of keeping that token fact-free.
+
+## Moderation of unLinkable Endorsements (MoLE) {#related-mole}
+
+MoLE ({{I-D.jms-mole-architecture}}, {{I-D.jms-mole-protocols}}) also supports anonymous admission. A client redeems an Anchor's Endorsement at a Moderator for an anonymous Credential. The Moderator can update the Credential's state during presentation, for example to rate-limit access, and can end the Credential by withholding the update. When the Moderator accepts more than one Anchor, redemption hides which of them granted the Endorsement.
+
+An AAP Issuer and a MoLE Anchor have analogous roles. AAP requires an authenticated principal who authorized an enrolled platform to represent them. MoLE leaves endorsement criteria to each Anchor, which may use a login, CAPTCHA, or another trust signal. In both designs, a server accepts each token or redemption once.
+
+The designs differ in four ways:
+
+- AAP names the issuer at redemption, and a verifier applies its trust policy per issuer ({{verification}}). MoLE hides the Anchor among the Anchors that the Moderator accepts.
+- AAP ends at admission, and the verifier establishes its own session ({{session-establishment}}). MoLE continues with a Credential whose state changes without linking the presentations of the client.
+- MoLE does not define identity disclosure. The identity claims module ({{AAP-CLAIMS}}) has no MoLE counterpart.
+- AAP identifies the agent software through Web Bot Auth. MoLE says that from the credential alone a delegated agent looks like its user, and that hiding differences in request content, timing, or rate is the user agent's job. MoLE also allows a separate pool of Anchors for agents.
+
+# Coexistence with Authentication and Authorization {#authn-coexistence}
+
+This section is informative.
+
+AAP does not replace a service's authentication or authorization. It occupies the middle of a stack in which each layer, read upward, links a request more strongly to a party:
+
+1. **Web Bot Auth** ({{I-D.meunier-web-bot-auth-architecture}}) identifies the software: every AAP request carries its signature ({{presentation}}), naming an operator but no principal.
+
+2. **AAP** adds the principal: the AAT attests that an accountable principal stands behind the software while naming no one ({{aat}}).
+
+3. **Conventional authentication and authorization** — an OAuth or OpenID Connect relationship the principal already holds with the service — links the request to a known account. This is the strongest linking, and the service's existing authorization model applies to it unchanged.
+
+A service offers the postures side by side with plain HTTP: a `401` carries one challenge per scheme the service accepts, and the client selects one it can satisfy (Section 11.6.1 of {{RFC9110}}; Section 7.2 of {{RFC9449}} advertises `Bearer` and `DPoP` together this way). A verifier with existing OAuth relationships can advertise a `Bearer` or `DPoP` ({{RFC9449}}) challenge beside its per-issuer `PrivateToken` challenges ({{presentation}}). An agent whose principal holds an account answers the identified scheme and proceeds as that account; one that does not, or that prefers anonymity, answers `PrivateToken` and is admitted on attestation alone. Answering an identified scheme is a deliberate de-anonymization, and the choice belongs to the agent: the anonymous path remains available in the same response.
+
+The layers also run in sequence within one interaction: a service commonly admits anonymously on an AAT and from there runs its ordinary session and authorization as it would for any customer ({{session-establishment}}). Where the identity claims module is deployed, a consented disclosure — a verified email, say — can serve as account-provisioning evidence, stepping the interaction up from the anonymous posture to a conventional account ({{AAP-CLAIMS}}, {{OIDC}}).
+
+AAP defines none of the identified schemes, imposes no ordering among a `401`'s challenges, and takes no position on which posture a service should prefer.
+
+# Privacy Considerations {#privacy}
+
+The attestation layer is designed so that privacy at the front door is structural: it holds by construction, not as a matter of issuer or verifier policy. This section states the properties that hold and is candid about the residual exposures that remain and how a deployment bounds them.
+
+**Unlinkability of issuance and redemption.** An AAT is issued by blind signing ({{token-issuance}}): the issuer signs a token it cannot correlate to the principal who requested it, and a redeemed token cannot be tied back to its issuance. The issuer therefore cannot reconstruct which principal presented a token to which verifier, and colluding verifiers cannot link a principal's activity across them through the token. The residual is a timing and volume side channel: an issuer that issued to one principal and a verifier that redeems in a narrow window can, by correlation, narrow the set of candidate principals. The control is set size — issuing in pools ahead of use decouples issuance time from redemption time, and a larger, busier issuance population widens the anonymity set. An issuer SHOULD issue in pools and SHOULD NOT mint single tokens on demand at the moment of redemption. Unlinkability also depends on where the blinding happens: an intermediary that sees unblinded token material can recognize the token at redemption, which is why the custody rules of {{token-issuance}} keep blinding and finished tokens with the agent whatever path issuance traffic takes.
+
+**A fact-free, handle-free credential.** The AAT carries no attribute of the principal and no identifier that resolves to one ({{prohibited-content}}). This is deliberate and load-bearing: any readable attribute is fingerprinting entropy that narrows the anonymity set, and any handle the issuer can resolve is a tracking surface whether or not it is read at the door. By carrying neither, the AAT removes both hazards at the layer where the credential travels to every party on the path: privacy holds by construction, independent of whether those parties log or correlate what they receive.
+
+**Public metadata partitions the anonymity set.** Where an issuer attaches a coarse class via the public-metadata extension ({{public-metadata}}), every distinct value a verifier can read divides the population into a smaller set: a two-valued class halves it, and a high-cardinality value would shrink it toward identification. An issuer therefore MUST keep public metadata low-cardinality and non-identifying, and SHOULD treat the count of distinct values as a privacy budget spent against the anonymity set, not a free annotation channel.
+
+**Agent keys and the correlation scope.** The agent's Web Bot Auth key is a correlator within its scope: every request it signs at a verifier is linkable to every other. An agent SHOULD use a distinct key per origin so the key is not a cross-origin correlator ({{presentation}}). In the key-bound binding mode ({{token-binding}}) an agent's AATs additionally share a per-key-stable value and are linkable to one another within that scope; with per-origin keys this is bounded to a single origin and is no worse than the linkability the signing key already creates there. The AAT itself is unlinkable, but the session a verifier establishes after admission ({{session-establishment}}) is a correlation scope: within it, that verifier correlates the agent's activity as it would any session. The privacy boundary is therefore per-verifier and per-agent-key, and an agent limits correlation by using distinct keys and not carrying a session beyond its purpose.
+
+# Security Considerations {#security}
+
+TODO. Points to cover:
+
+- Token theft: in the bearer mode an AAT is a bearer credential whose replay is bounded by single-use, the double-spend cache, and issuance rate limits; the optional key-bound mode makes a token non-transferable at the binding costs of {{token-binding}}. Residual exposure if the agent private key is compromised.
+- Double-spend and the seen-token cache; the single-use property and its tension with stateless multi-request verification.
+- Loss of targeted revocation for outstanding unlinkable tokens; key-epoch rotation as the only coarse lever; short pool lifetimes.
+- Publicly verifiable token type mandated so verifier need not be issuer; why VOPRF is excluded for ambient verification.
+- The trust concentrated in the enrolled platform and its issuance credential; consequences of platform client-credential compromise (bulk issuance under stolen authority) and the issuer-side rate limits that bound it.
+- Issuance custody ({{token-issuance}}): a platform or relay that holds unblinded token material becomes a token custodian able to recognize tokens at redemption; tokens moved between agent instances are indistinguishable from stolen ones.
+
+# IANA Considerations {#iana}
+
+TODO. Registrations implied by the current text:
+
+- The `urn:aap:` URN namespace. This document registers the namespace; each module registers its own values within it ({{AAP-CLAIMS}}). The namespace is provisional: if this document enters the IETF stream, these types move to a sub-namespace of `urn:ietf:params`, registered under {{RFC3553}}, and early implementations should expect that rename.
+- A Privacy Pass token type, or a reuse of `0x0002` with a profile registration, for the AAT.
+- Reuse of `Authorization: PrivateToken` ({{RFC9577}}) for AAT redemption; HTTP Message Signature tag `web-bot-auth`.
+- OAuth scope `aap:represent`.
+- Well-known URI `aap-issuer` (issuer metadata, with token-keys beneath it), and a registry of issuer-metadata members that modules add to ({{issuer-metadata}}).
+
+# Open Items {#open-items}
+
+A running list of the decisions this revision defers, collected for review:
+
+- Whether to retain the key-bound mode as an option alongside the bearer default, given that it costs unlinkability and deviates from RFC 9577's origin-driven `redemption_context` model. The `agent_kid || origin-nonce` variant is dropped as incompatible with pooling ({{token-binding}}).
+- Presentation mode: resolved to challenge-driven against a stable pooled challenge (the verifier challenges, the agent answers from its pool, and Web Bot Auth supplies freshness and origin-binding). Strict origin-driven challenge-response (Privacy-Pass-native freshness, but no pooling and a synchronous issuance round trip per origin) was considered and rejected for the pooling cost ({{presentation}}).
+- Agent key directory: bare JWK Sets, the Web Bot Auth signature directory ({{I-D.meunier-http-message-signatures-directory}}), or CIMD; the local-agent module's device-resident case bears on the choice ({{AAP-LOCAL}}).
+- Whether the linking ceremony needs a defined extension-point registry (which modules may attach standing authorizations at linking, and how they are announced), or whether module-by-module amendment ({{identity-linking}}) suffices.
+- Whether the issuer-metadata member set warrants an IANA registry at this stage or a simple list maintained across the core and its modules ({{issuer-metadata}}).
+
+# Acknowledgments {#acknowledgments}
+
+TODO.
+
+--- back
+
+# Examples {#appendix-a}
+
+This appendix is informative.
+
+TODO: End-to-end example flow: anonymous front-door admission with no identity — challenge, redemption, offline verification, session establishment.
