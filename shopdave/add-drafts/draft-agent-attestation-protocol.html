@@ -1,0 +1,2608 @@
+<!DOCTYPE html>
+<html lang="en" class="Internet-Draft">
+<head>
+<meta charset="utf-8">
+<meta content="Common,Latin" name="scripts">
+<meta content="initial-scale=1.0" name="viewport">
+<title>Agent Attestation Protocol (AAP)</title>
+<meta content="Ryan Drapeau" name="author">
+<meta content="David Pettersson" name="author">
+<meta content="
+       This document defines the core of the Agent Attestation Protocol (AAP): a way for a software agent to prove to a service that an accountable principal stands behind it, without revealing who. The credential the agent presents is the Agent Attestation Token (AAT): a short-lived, anonymous, unlinkable Privacy Pass token, issued by the principal's identity provider under a standing authorization and blindly signed, so the issuer cannot link a token to the principal who obtained it. The AAT attests exactly one thing — an accountable principal stands behind the presenting agent — and carries nothing else: no name, no fact, no handle that resolves to a person. Any party on the request path can verify it offline against the issuer's published keys. 
+       This document specifies the AAT's format, its issuance under a platform enrollment and a per-principal linking grant, its presentation alongside a Web Bot Auth request signature, and its verification. Companion documents extend this core: an identity claims module for consent-gated disclosure of facts about the principal, and a local-agent module for agents that run on hardware the platform does not control. 
+    " name="description">
+<meta content="xml2rfc 3.34.1" name="generator">
+<meta content="attestation" name="keyword">
+<meta content="agent" name="keyword">
+<meta content="Privacy Pass" name="keyword">
+<meta content="draft-agent-attestation-protocol-latest" name="ietf.draft">
+<!-- Generator version information:
+  xml2rfc 3.34.1
+    Python 3.14.8
+    ConfigArgParse 1.8.0
+    google-i18n-address 3.1.1
+    intervaltree 3.2.1
+    Jinja2 3.1.6
+    lxml 6.1.1
+    natsort 8.4.0
+    platformdirs 4.12.2
+    pycountry 24.6.1
+    PyYAML 6.0.3
+    requests 2.33.1
+    wcwidth 0.9.1
+-->
+<link href="draft-agent-attestation-protocol.xml" rel="alternate" type="application/rfc+xml">
+<link href="#copyright" rel="license">
+<style type="text/css">@font-face {
+  font-family: 'Lora';
+  font-style: italic;
+  font-weight: 400;
+  font-display: swap;
+  src: local('Lora Italic'), local('Lora-Italic'), url('https://martinthomson.github.io/rfc-css/fonts/lora-italic-cyrillic-ext.woff2') format('woff2');
+  unicode-range: U+0460-052F, U+1C80-1C88, U+20B4, U+2DE0-2DFF, U+A640-A69F, U+FE2E-FE2F;
+}
+@font-face {
+  font-family: 'Lora';
+  font-style: italic;
+  font-weight: 400;
+  font-display: swap;
+  src: local('Lora Italic'), local('Lora-Italic'), url('https://martinthomson.github.io/rfc-css/fonts/lora-italic-cyrillic-ext.woff2') format('woff2');
+  unicode-range: U+0400-045F, U+0490-0491, U+04B0-04B1, U+2116;
+}
+@font-face {
+  font-family: 'Lora';
+  font-style: italic;
+  font-weight: 400;
+  font-display: swap;
+  src: local('Lora Italic'), local('Lora-Italic'), url('https://martinthomson.github.io/rfc-css/fonts/lora-italic-vietnamese.woff2') format('woff2');
+  unicode-range: U+0102-0103, U+0110-0111, U+1EA0-1EF9, U+20AB;
+}
+@font-face {
+  font-family: 'Lora';
+  font-style: italic;
+  font-weight: 400;
+  font-display: swap;
+  src: local('Lora Italic'), local('Lora-Italic'), url('https://martinthomson.github.io/rfc-css/fonts/lora-italic-latin-ext.woff2') format('woff2');
+  unicode-range: U+0100-024F, U+0259, U+1E00-1EFF, U+2020, U+20A0-20AB, U+20AD-20CF, U+2113, U+2C60-2C7F, U+A720-A7FF;
+}
+@font-face {
+  font-family: 'Lora';
+  font-style: italic;
+  font-weight: 400;
+  font-display: swap;
+  src: local('Lora Italic'), local('Lora-Italic'), url('https://martinthomson.github.io/rfc-css/fonts/lora-italic-latin.woff2') format('woff2');
+  unicode-range: U+0000-00FF, U+0131, U+0152-0153, U+02BB-02BC, U+02C6, U+02DA, U+02DC, U+2000-206F, U+2074, U+20AC, U+2122, U+2191, U+2193, U+2212, U+2215, U+FEFF, U+FFFD;
+}
+@font-face {
+  font-family: 'Lora';
+  font-style: normal;
+  font-weight: 400;
+  font-display: swap;
+  src: local('Lora Regular'), local('Lora-Regular'), url('https://martinthomson.github.io/rfc-css/fonts/lora-regular-cyrillic-ext.woff2') format('woff2');
+  unicode-range: U+0460-052F, U+1C80-1C88, U+20B4, U+2DE0-2DFF, U+A640-A69F, U+FE2E-FE2F;
+}
+@font-face {
+  font-family: 'Lora';
+  font-style: normal;
+  font-weight: 400;
+  font-display: swap;
+  src: local('Lora Regular'), local('Lora-Regular'), url('https://martinthomson.github.io/rfc-css/fonts/lora-regular-cyrillic.woff2') format('woff2');
+  unicode-range: U+0400-045F, U+0490-0491, U+04B0-04B1, U+2116;
+}
+@font-face {
+  font-family: 'Lora';
+  font-style: normal;
+  font-weight: 400;
+  font-display: swap;
+  src: local('Lora Regular'), local('Lora-Regular'), url('https://martinthomson.github.io/rfc-css/fonts/lora-regular-vietnamese.woff2') format('woff2');
+  unicode-range: U+0102-0103, U+0110-0111, U+1EA0-1EF9, U+20AB;
+}
+@font-face {
+  font-family: 'Lora';
+  font-style: normal;
+  font-weight: 400;
+  font-display: swap;
+  src: local('Lora Regular'), local('Lora-Regular'), url('https://martinthomson.github.io/rfc-css/fonts/lora-regular-latin-ext.woff2') format('woff2');
+  unicode-range: U+0100-024F, U+0259, U+1E00-1EFF, U+2020, U+20A0-20AB, U+20AD-20CF, U+2113, U+2C60-2C7F, U+A720-A7FF;
+}
+@font-face {
+  font-family: 'Lora';
+  font-style: normal;
+  font-weight: 400;
+  font-display: swap;
+  src: local('Lora Regular'), local('Lora-Regular'), url('https://martinthomson.github.io/rfc-css/fonts/lora-regular-latin.woff2') format('woff2');
+  unicode-range: U+0000-00FF, U+0131, U+0152-0153, U+02BB-02BC, U+02C6, U+02DA, U+02DC, U+2000-206F, U+2074, U+20AC, U+2122, U+2191, U+2193, U+2212, U+2215, U+FEFF, U+FFFD;
+}
+@font-face {
+  font-family: 'Lora';
+  font-style: normal;
+  font-weight: 700;
+  font-display: swap;
+  src: local('Lora Bold'), local('Lora-Bold'), url('https://martinthomson.github.io/rfc-css/fonts/lora-bold-cyrillic-ext.woff2') format('woff2');
+  unicode-range: U+0460-052F, U+1C80-1C88, U+20B4, U+2DE0-2DFF, U+A640-A69F, U+FE2E-FE2F;
+}
+@font-face {
+  font-family: 'Lora';
+  font-style: normal;
+  font-weight: 700;
+  font-display: swap;
+  src: local('Lora Bold'), local('Lora-Bold'), url('https://martinthomson.github.io/rfc-css/fonts/lora-bold-cyrillic.woff2') format('woff2');
+  unicode-range: U+0400-045F, U+0490-0491, U+04B0-04B1, U+2116;
+}
+@font-face {
+  font-family: 'Lora';
+  font-style: normal;
+  font-weight: 700;
+  font-display: swap;
+  src: local('Lora Bold'), local('Lora-Bold'), url('https://martinthomson.github.io/rfc-css/fonts/lora-bold-vietnamese.woff2') format('woff2');
+  unicode-range: U+0102-0103, U+0110-0111, U+1EA0-1EF9, U+20AB;
+}
+@font-face {
+  font-family: 'Lora';
+  font-style: normal;
+  font-weight: 700;
+  font-display: swap;
+  src: local('Lora Bold'), local('Lora-Bold'), url('https://martinthomson.github.io/rfc-css/fonts/lora-bold-latin-ext.woff2') format('woff2');
+  unicode-range: U+0100-024F, U+0259, U+1E00-1EFF, U+2020, U+20A0-20AB, U+20AD-20CF, U+2113, U+2C60-2C7F, U+A720-A7FF;
+}
+@font-face {
+  font-family: 'Lora';
+  font-style: normal;
+  font-weight: 700;
+  font-display: swap;
+  src: local('Lora Bold'), local('Lora-Bold'), url('https://martinthomson.github.io/rfc-css/fonts/lora-bold-latin.woff2') format('woff2');
+  unicode-range: U+0000-00FF, U+0131, U+0152-0153, U+02BB-02BC, U+02C6, U+02DA, U+02DC, U+2000-206F, U+2074, U+20AC, U+2122, U+2191, U+2193, U+2212, U+2215, U+FEFF, U+FFFD;
+}
+@font-face {
+  font-family: 'Lora';
+  font-style: normal;
+  font-weight: 600;
+  font-display: swap;
+  src: local('Lora SemiBold'), local('Lora-SemiBold'), url('https://martinthomson.github.io/rfc-css/fonts/lora-semibold-latin.woff2') format('woff2');
+  unicode-range: U+0000-00FF, U+0131, U+0152-0153, U+02BB-02BC, U+02C6, U+02DA, U+02DC, U+2000-206F, U+2074, U+20AC, U+2122, U+2191, U+2193, U+2212, U+2215, U+FEFF, U+FFFD;
+}
+
+@font-face {
+  font-family: 'Oxygen Mono';
+  font-style: normal;
+  font-weight: 400;
+  font-display: swap;
+  src: local('Oxygen Mono'), local('OxygenMono-Regular'), url('https://martinthomson.github.io/rfc-css/fonts/oxygenmono-regular-latin-ext.woff2') format('woff2');
+  unicode-range: U+0100-02BA, U+02BD-02C5, U+02C7-02CC, U+02CE-02D7, U+02DD-02FF, U+0304, U+0308, U+0329, U+1D00-1DBF, U+1E00-1E9F, U+1EF2-1EFF, U+2020, U+20A0-20AB, U+20AD-20C0, U+2113, U+2C60-2C7F, U+A720-A7FF;
+}
+@font-face {
+  font-family: 'Oxygen Mono';
+  font-style: normal;
+  font-weight: 400;
+  font-display: swap;
+  src: local('Oxygen Mono'), local('OxygenMono-Regular'), url('https://martinthomson.github.io/rfc-css/fonts/oxygenmono-regular-latin.woff2') format('woff2');
+  unicode-range: U+0000-00FF, U+0131, U+0152-0153, U+02BB-02BC, U+02C6, U+02DA, U+02DC, U+0304, U+0308, U+0329, U+2000-206F, U+20AC, U+2122, U+2191, U+2193, U+2212, U+2215, U+FEFF, U+FFFD;
+}
+
+@font-face {
+  font-family: 'Sofia Sans Semi Condensed';
+  font-style: italic;
+  font-weight: 1 1000;
+  src: url('https://martinthomson.github.io/rfc-css/fonts/sofiasanssemicondensed-italic-cyrillic-ext.woff2') format('woff2');
+  unicode-range: U+0460-052F, U+1C80-1C8A, U+20B4, U+2DE0-2DFF, U+A640-A69F, U+FE2E-FE2F;
+}
+@font-face {
+  font-family: 'Sofia Sans Semi Condensed';
+  font-style: italic;
+  font-weight: 1 1000;
+  src: url('https://martinthomson.github.io/rfc-css/fonts/sofiasanssemicondensed-italic-cyrillic.woff2') format('woff2');
+  unicode-range: U+0301, U+0400-045F, U+0490-0491, U+04B0-04B1, U+2116;
+}
+@font-face {
+  font-family: 'Sofia Sans Semi Condensed';
+  font-style: italic;
+  font-weight: 1 1000;
+  src: url('https://martinthomson.github.io/rfc-css/fonts/sofiasanssemicondensed-italic-greek.woff2') format('woff2');
+  unicode-range: U+0370-0377, U+037A-037F, U+0384-038A, U+038C, U+038E-03A1, U+03A3-03FF;
+}
+@font-face {
+  font-family: 'Sofia Sans Semi Condensed';
+  font-style: italic;
+  font-weight: 1 1000;
+  src: url('https://martinthomson.github.io/rfc-css/fonts/sofiasanssemicondensed-italic-latin-ext.woff2') format('woff2');
+  unicode-range: U+0100-02BA, U+02BD-02C5, U+02C7-02CC, U+02CE-02D7, U+02DD-02FF, U+0304, U+0308, U+0329, U+1D00-1DBF, U+1E00-1E9F, U+1EF2-1EFF, U+2020, U+20A0-20AB, U+20AD-20C0, U+2113, U+2C60-2C7F, U+A720-A7FF;
+}
+@font-face {
+  font-family: 'Sofia Sans Semi Condensed';
+  font-style: italic;
+  font-weight: 1 1000;
+  src: url('https://martinthomson.github.io/rfc-css/fonts/sofiasanssemicondensed-italic-latin.woff2') format('woff2');
+  unicode-range: U+0000-00FF, U+0131, U+0152-0153, U+02BB-02BC, U+02C6, U+02DA, U+02DC, U+0304, U+0308, U+0329, U+2000-206F, U+20AC, U+2122, U+2191, U+2193, U+2212, U+2215, U+FEFF, U+FFFD;
+}
+@font-face {
+  font-family: 'Sofia Sans Semi Condensed';
+  font-style: normal;
+  font-weight: 1 1000;
+  src: url('https://martinthomson.github.io/rfc-css/fonts/sofiasanssemicondensed-regular-cyrillic-ext.woff2') format('woff2');
+  unicode-range: U+0460-052F, U+1C80-1C8A, U+20B4, U+2DE0-2DFF, U+A640-A69F, U+FE2E-FE2F;
+}
+@font-face {
+  font-family: 'Sofia Sans Semi Condensed';
+  font-style: normal;
+  font-weight: 1 1000;
+  src: url('https://martinthomson.github.io/rfc-css/fonts/sofiasanssemicondensed-regular-cyrillic.woff2') format('woff2');
+  unicode-range: U+0301, U+0400-045F, U+0490-0491, U+04B0-04B1, U+2116;
+}
+@font-face {
+  font-family: 'Sofia Sans Semi Condensed';
+  font-style: normal;
+  font-weight: 1 1000;
+  src: url('https://martinthomson.github.io/rfc-css/fonts/sofiasanssemicondensed-regular-greek.woff2') format('woff2');
+  unicode-range: U+0370-0377, U+037A-037F, U+0384-038A, U+038C, U+038E-03A1, U+03A3-03FF;
+}
+@font-face {
+  font-family: 'Sofia Sans Semi Condensed';
+  font-style: normal;
+  font-weight: 1 1000;
+  src: url('https://martinthomson.github.io/rfc-css/fonts/sofiasanssemicondensed-regular-latin-ext.woff2') format('woff2');
+  unicode-range: U+0100-02BA, U+02BD-02C5, U+02C7-02CC, U+02CE-02D7, U+02DD-02FF, U+0304, U+0308, U+0329, U+1D00-1DBF, U+1E00-1E9F, U+1EF2-1EFF, U+2020, U+20A0-20AB, U+20AD-20C0, U+2113, U+2C60-2C7F, U+A720-A7FF;
+}
+@font-face {
+  font-family: 'Sofia Sans Semi Condensed';
+  font-style: normal;
+  font-weight: 1 1000;
+  src: url('https://martinthomson.github.io/rfc-css/fonts/sofiasanssemicondensed-regular-latin.woff2') format('woff2');
+  unicode-range: U+0000-00FF, U+0131, U+0152-0153, U+02BB-02BC, U+02C6, U+02DA, U+02DC, U+0304, U+0308, U+0329, U+2000-206F, U+20AC, U+2122, U+2191, U+2193, U+2212, U+2215, U+FEFF, U+FFFD;
+}
+
+:root {
+  color-scheme: light dark;
+  --background-color: #fff;
+  --text-color: #222;
+  --title-color: #191919;
+  --link-color: #2a6496;
+  --highlight-color: #f9f9f9;
+  --line-color: #eee;
+  --pilcrow-weak: #ddd;
+  --pilcrow-strong: #bbb;
+  --small-font-size: 14.5px;
+  --font-mono: 'Oxygen Mono', monospace;
+  --font-title: "Sofia Sans Semi Condensed", sans-serif;
+  scrollbar-color: #bbb #eee;
+}
+body {
+  max-width: 600px;
+  margin: 75px auto;
+  padding: 0 5px;
+  color: var(--text-color);
+  background-color: var(--background-color);
+  font: 16px/22px "Lora", serif;
+  scroll-behavior: smooth;
+}
+
+.ears {
+  display: none;
+}
+
+/* headings */
+section {
+  clear: both;
+}
+.section-number {
+  padding-right: 0.5em;
+}
+h1, h2, h3, h4, h5, h6 {
+  font-family: var(--font-title);
+  font-weight: 680;
+  margin: 0.8em 0 0.3em;
+  font-size-adjust: 0.5;
+  color: var(--title-color);
+}
+h1 {
+  &#title {
+    font-size: 32px;
+    line-height: 40px;
+    clear: both;
+    margin: 1.5em 0 0.2em;
+  }
+  &#rfcnum {
+    margin: 1.5em 0 0.2em;
+    & + h1#title {
+      margin: 0.2em 0;
+    }
+  }
+}
+
+h1, h2, h3 {
+  font-size: 22px;
+  line-height: 27px;
+}
+h4, h5, h6 {
+  font-size: 20px;
+  line-height: 24px;
+}
+
+/* general structure */
+.author {
+  padding-bottom: 0.3em;
+  vertical-align: top;
+}
+#abstract+p {
+  font-size: 18px;
+  line-height: 24px;
+  & code, & samp, & tt {
+    font-size: 16px;
+    line-height: 0;
+  }
+}
+
+p {
+  padding: 0;
+  margin: 0.5em 0;
+  text-align: left;
+}
+div {
+  margin: 0;
+}
+.alignRight {
+  margin: 1em 0;
+  &.art-text {
+    background-color: var(--highlight-color);
+    border: 1px solid var(--line-color);
+    border-radius: 3px;
+    padding: 0.5em 1em 0;
+    margin-bottom: 0.5em;
+    & pre {
+      padding: 0;
+      width: auto;
+    }
+  }
+  & > *:first-child {
+    border: none;
+    margin: 0;
+    float: right;
+    clear: both;
+  }
+  & > *:nth-child(2) {
+    clear: both;
+    display: block;
+    border: none;
+  }
+}
+svg {
+  display: block;
+  /* font-family isn't space-separated, but =~ will have to do */
+  &[font-family~="monospace" i], & [font-family~="monospace" i] {
+    font-family: var(--font-mono);
+  }
+}
+.alignCenter {
+  margin: 1em 0;
+  &.art-text {
+    background-color: var(--highlight-color);
+    border: 1px solid var(--line-color);
+    border-radius: 3px;
+    padding: 0.5em 1em 0;
+    margin-bottom: 0.5em;
+    & pre {
+      padding: 0;
+      width: auto;
+    }
+  }
+  & > *:first-child {
+    border: none;
+    /* this isn't optimal, but it's an existence proof.  PrinceXML doesn't
+       support flexbox yet.
+    */
+    display: table;
+    margin: 0 auto;
+  }
+}
+
+/* lists */
+ol, ul {
+  padding: 0;
+  margin: 0 0 0.5em 2em;
+  & :is(ol, ul) {
+    margin-left: 1em;
+  }
+}
+li {
+  margin: 0 0 0.25em 0;
+}
+ul.empty, .ulEmpty {
+  list-style-type: none;
+  & li {
+    margin-top: 0.5em;
+  }
+}
+:is(ul, ol).compact, .ulCompact, .olCompact {
+  margin: 0 0 0 2em;
+  & li {
+    margin: 0;
+    & :first-child { margin-top: 0; }
+    & :last-child { margin-bottom: 0; }
+  }
+}
+
+/* definition lists */
+dl {
+  clear: left;
+  --indent: 3ch;
+  /* --indent: attr(indent ch); not supported in any browser, but we can dream */
+  &.olPercent {
+    --indent: 5ch;
+    & > dt {
+      min-width: calc(var(--indent) - 2ch);
+      float: none;
+    }
+  }
+
+  dl > dd > & {
+    margin-top: 0.5em;
+    margin-bottom: 0;
+  }
+
+  &:not(.dlNewline) > dt {
+    float: left;
+    margin-right: 2ch;
+    min-width: 8ch;
+  }
+  & > dd {
+    margin-bottom: .8em;
+    margin-left: var(--indent) !important; /* stupid element overrides */
+    min-height: 2ex;
+  }
+}
+:is(dl.compact, .dlCompact) > dd {
+  margin-bottom: 0;
+  & > :is(:first-child, .break:first-child + *) {
+    margin-top: 0;
+  }
+  & > :is(:last-child) {
+    margin-bottom: 0;
+  }
+}
+:is(dd, span).break {
+  display: none;
+}
+
+/* links */
+a {
+  text-decoration: none;
+  &[href] {
+    color: var(--link-color);
+    &:hover { text-decoration: underline; }
+    &.selfRef {
+      color: var(--text-color);
+      &:hover {
+        text-decoration: none;
+        background-color: var(--highlight-color);
+      }
+    }
+  }
+}
+.iref + a[href].internal {
+  color: var(--text-color);
+}
+a.xref:is(.cite, .auto), :is(#status-of-memo, #copyright) a {
+  white-space: nowrap;
+}
+
+/* Figures */
+tt, code, pre {
+  background-color: var(--highlight-color);
+  font: 14px/22px var(--font-mono);
+}
+tt, code {
+  /* changing the font for inline elements leads to different ascender
+     and descender heights; as we want to retain baseline alignment,
+     remove leading to avoid altering the final height of lines
+     note: this fails if these blocks take an entire line,
+     a different solution would be great */
+  line-height: 0;
+}
+:is(h1, h2, h3, h4, h5, h6) :is(tt, code) {
+  font-size: 84%;
+}
+pre {
+  border: 1px solid var(--line-color);
+  font-size: 13.5px;
+  line-height: 16px;
+  letter-spacing: -0.2px;
+  margin: 5px;
+  padding: 5px;
+}
+img {
+  max-width: 100%;
+}
+figure {
+  margin: 0.5em 0;
+  padding: 0;
+  & blockquote {
+    margin: 0.8em 0.4em 0.4em;
+  }
+}
+figcaption, caption {
+  font-style: italic;
+  margin: 0.5em 1.5em;
+  text-align: left;
+  caption-side: bottom;
+}
+@media screen {
+  /* Auto-collapse boilerplate. */
+  :is(#status-of-memo, #copyright) {
+    & p {
+      margin: -2px 0;
+      max-height: 0;
+      transition: max-height 2s ease, margin 0.5s ease 0.5s;
+      overflow: hidden;
+    }
+    &:hover p,
+    & h2:target ~ p {
+      margin: 0.5em 0;
+      max-height: 500px;
+      overflow: auto;
+    }
+  }
+  pre, svg {
+    display: inline-block;
+    /* In the horizontal direction, sometimes people make over-sized figures.
+       Scrollbars for those is therefore necessary: auto adds them as necessary..
+       In the vertical direction, the line-height can combine with the font
+       asender/descender height to produce scrollbars: hidden avoids that. */
+    overflow: auto hidden;
+  }
+  pre {
+    max-width: 100%;
+    width: calc(100% - 22px - 1em);
+  }
+  svg {
+    max-width: calc(100% - 22px - 1em);
+  }
+  figure pre {
+    display: block;
+    width: calc(100% - 25px);
+  }
+  :is(pre, svg) + .pilcrow {
+    display: inline-block;
+    vertical-align: text-bottom;
+    padding-bottom: 8px;
+  }
+}
+
+/* aside, blockquote */
+aside, blockquote {
+  margin-left: 0;
+  padding: 0 2em;
+  font-style: italic;
+}
+blockquote {
+  margin: 1em 0;
+  border-left: 2px var(--pilcrow-strong) solid;
+}
+cite {
+  display: block;
+  text-align: right;
+  font-style: italic;
+}
+
+/* tables */
+table {
+  width: auto;
+  max-width: 100%;
+  margin: 0 0 1em;
+  border-collapse: collapse;
+  &.right { margin-left: auto; }
+  &.center { margin-left: auto; margin-right: auto; }
+  &.left { margin-right: auto; }
+  & .text-left { text-align: left; }
+  & .text-center { text-align: center; }
+  & .text-right { text-align: right; }
+  & caption {
+    margin: 0;
+    padding: 3px 0 3px 1em;
+  }
+  & p { margin: 0; }
+}
+
+thead, tbody {
+  border: 1px solid var(--line-color);
+}
+th, td {
+  text-align: left;
+  vertical-align: top;
+  padding: 5px 10px;
+}
+th {
+  background-color: var(--line-color);
+}
+:is(tr:nth-child(2n), thead+tbody > tr:nth-child(2n+1)) > td {
+  background-color: var(--background-color);
+}
+:is(tr:nth-child(2n+1), thead+tbody > tr:nth-child(2n)) > td {
+  background-color: var(--highlight-color);
+}
+
+/* pilcrow */
+a.pilcrow {
+  margin-left: 3px;
+  opacity: 0.2;
+  user-select: none;
+  &[href] {
+    color: var(--pilcrow-weak);
+    &:hover { text-decoration: none; }
+  }
+  @media not print {
+    :hover > &, &:focus {
+      opacity: 1;
+    }
+    &[href]:hover {
+      color: var(--pilcrow-strong);
+      background-color: transparent;
+    }
+  }
+  @media print {
+    display: none;
+  }
+}
+
+/* misc */
+hr {
+  border: 0;
+  border-top: 1px solid var(--line-color);
+}
+.bcp14 {
+  font-variant: small-caps;
+  font-weight: 600;
+  font-size: var(--small-font-size);
+}
+.role {
+  font-variant: all-small-caps;
+}
+sub, sup {
+  line-height: 1;
+  font-size: 80%;
+}
+
+/* info block */
+#identifiers {
+  margin: 0;
+  font-size: var(--small-font-size);
+  line-height: 18px;
+  --identifier-width: 15ch;
+  & dt {
+    width: var(--identifier-width);
+    min-width: var(--identifier-width);
+    clear: left;
+    float: left;
+    text-align: right;
+    margin-right: 1ch;
+  }
+  & dd {
+    margin: 0;
+    margin-left: calc(1em + var(--identifier-width)) !important;
+    min-width: 5em;
+  }
+  & .authors {
+    & .author {
+      display: inline-block;
+      margin-right: 1.5em;
+    }
+    & .org {
+      font-style: italic;
+    }
+  }
+}
+
+/* The prepared/rendered info at the very bottom of the page */
+.docInfo {
+  color: #999;
+  font-size: 0.9em;
+  font-style: italic;
+  margin-top: 2em;
+  & .prepared {
+    float: right;
+  }
+}
+
+/* table of contents */
+#toc {
+  padding: 0.75em 0 2em 0;
+  margin-bottom: 1em;
+
+  & nav {
+    & ul {
+      margin: 0 0.5em 0 0;
+      padding: 0;
+      list-style: none;
+    }
+    & li {
+      line-height: 1.3em;
+      margin: 2px 0;
+      padding-left: 1.2em;
+      text-indent: -1.2em;
+    }
+  }
+  & a.xref {
+    white-space: normal;
+  }
+}
+
+.references {
+  & > dt {
+    text-align: right;
+    font-weight: bold;
+    min-width: 10ch;
+    margin-right: 1.5ch;
+    &:target::before {
+      content: "⇒";
+      margin: 0 10px 0 -25px;
+    }
+  }
+  & > dd {
+    margin-left: 12ch !important;
+    overflow: visible;
+    & .refInstance {
+      margin-bottom: 0.8em;
+    }
+    & .ascii {
+      margin-bottom: 0.25em;
+    }
+  }
+}
+
+#rfc\.index\.index + ul {
+  margin-left: 0;
+}
+
+/* authors */
+address.vcard {
+  font-style: normal;
+  max-width: 20em;
+  margin: 1em auto 1em 0;
+
+  & .nameRole {
+    font-weight: 700;
+    margin-left: 0;
+  }
+  & .label {
+    margin: 0.5em 0;
+  }
+  & .type {
+    display: none;
+  }
+  & .alternative-contact {
+    margin: 0.5em 0 0.25em 0;
+  }
+  & .non-ascii {
+    margin: 0 0 0 2em;
+  }
+  & div.left {
+    text-align: left;
+  }
+  & div.right {
+    text-align: right;
+  }
+}
+
+hr.addr {
+  border-top: 1px dashed;
+  margin: 0;
+  color: #ddd;
+  max-width: calc(100% - 16px);
+}
+@media (min-width: 500px) {
+  #authors-addresses {
+    & > section {
+      column-count: 2;
+      column-gap: 20px;
+    }
+    & > section > h2 {
+      column-span: all;
+    }
+    /* hack for break-inside: avoid-column */
+    & address {
+      display: inline-block;
+      break-inside: avoid-column;
+    }
+  }
+}
+
+/* Comments */
+.rfcEditorRemove {
+  & p:first-of-type {
+    font-style: italic;
+  }
+}
+.cref {
+  background-color: rgba(249, 232, 105, 0.3);
+  padding: 2px 4px;
+}
+.crefSource {
+  font-style: italic;
+}
+
+@media screen {
+  #toc {
+    & nav {
+      font-family: var(--font-title);
+      font-weight: 360;
+      & > ul { margin-bottom: 2em; }
+      & ul {
+        margin: 0 0 0 4px;
+        & :is(p, li) {
+          margin: 2px 0;
+        }
+      }
+    }
+    & a.toplink {
+      float: right;
+    }
+  }
+}
+@media not screen {
+  #toc a.toplink {
+    display: none;
+  }
+}
+
+
+/* TOC layout for smaller screens */
+@media screen and (max-width: 929px) {
+  #toc {
+    position: fixed;
+    z-index: 2;
+    top: 0;
+    right: 0;
+    padding: 1px 0 0 0;
+    margin: 0;
+    border-bottom: 1px solid #ccc;
+    opacity: 0.6;
+    & h2 {
+      margin: 0;
+      padding: 2px 0 2px 6px;
+      padding-right: 1em;
+      font-size: 18px;
+      line-height: 24px;
+      min-width: 190px;
+      text-align: right;
+      background-color: #444;
+      color: white;
+      cursor: pointer;
+      &::before { /* css hamburger */
+        float: right;
+        position: relative;
+        width: 1em;
+        height: 1px;
+        left: -164px;
+        margin: 8px 0 0 0;
+        background: white none repeat scroll 0 0;
+        box-shadow: 0 4px 0 0 white, 0 8px 0 0 white;
+        content: "";
+      }
+    }
+    & nav {
+      display: none;
+      background-color: var(--background-color);
+      padding: 0.5em 1em 1em;
+      overflow: auto;
+      overscroll-behavior: contain;
+      height: calc(100vh - 48px);
+      border-left: 1px solid #ddd;
+    }
+    &.active {
+      opacity: 1;
+      & nav { display: block; }
+    }
+    /* Make the collapsed ToC header render white on gray also when it's a link */
+    & h2 a,
+    & h2 a:is(:link, :focus, :hover),
+    & a.toplink,
+    & a.toplink:hover {
+      color: white;
+      background-color: #444;
+      text-decoration: none;
+    }
+    & a.toplink {
+      margin: 2px 0.5em 0;
+    }
+  }
+}
+
+/* TOC layout for wide screens */
+@media screen and (min-width: 930px) {
+  body {
+    padding-right: 360px;
+    padding-right: calc(min(180px + 20%, 500px));
+  }
+  #toc {
+    position: fixed;
+    bottom: 0;
+    right: 0;
+    right: calc(50vw - 480px);
+    width: 312px;
+    margin: 0;
+    padding: 0;
+    z-index: 1;
+    & h2 {
+      margin: 0;
+      padding: 0.25em 1em 1em 0;
+    }
+    & nav {
+      display: block;
+      height: calc(90vh - 84px);
+      bottom: 0;
+      padding: 0.5em 0 2em;
+      overflow: auto;
+      overscroll-behavior: contain;
+      scrollbar-width: thin;
+    }
+    & a.toplink {
+      margin: 8px 0.5em 0;
+    }
+  }
+  img { /* future proofing */
+    max-width: 100%;
+    height: auto;
+  }
+}
+
+/* pagination */
+@media print {
+  body {
+    width: 100%;
+  }
+  p {
+    orphans: 3;
+    widows: 3;
+  }
+  #n-copyright-notice {
+    border-bottom: none;
+  }
+  #toc {
+    page-break-before: always;
+    border-top: none;
+    padding-top: 0;
+  }
+  #n-introduction {
+    page-break-before: always;
+  }
+  figure, pre, .vcard {
+    page-break-inside: avoid;
+  }
+  h1, h2, h3, h4, h5, h6 {
+    page-break-after: avoid;
+  }
+  :is(h2, h3, h4, h5, h6)+*, dd {
+    page-break-before: avoid;
+  }
+  pre {
+    white-space: pre-wrap;
+    word-wrap: break-word;
+    font-size: 10pt;
+  }
+  table {
+    border: 1px solid #ddd;
+  }
+  td {
+    border-top: 1px solid #ddd;
+  }
+}
+
+@page :first {
+  padding-top: 0;
+  @top-left {
+    content: normal;
+    border: none;
+  }
+  @top-center {
+    content: normal;
+    border: none;
+  }
+  @top-right {
+    content: normal;
+    border: none;
+  }
+}
+
+@page {
+  size: A4;
+  margin-bottom: 45mm;
+  padding-top: 20px;
+}
+
+/* Dark mode. */
+@media (prefers-color-scheme: dark) {
+:root {
+  --background-color: #121212;
+  --text-color: #f0f0f0;
+  --title-color: #fff;
+  --link-color: #4da4f0;
+  --highlight-color: #282828;
+  --line-color: #444;
+  --pilcrow-weak: #444;
+  --pilcrow-strong: #666;
+  scrollbar-color: #777 #333;
+}
+}
+
+/* SVG Trick: a prefix match works because only black and white are allowed */
+svg {
+  & :is([stroke="black"], [stroke^="#000"]) {
+    stroke: var(--text-color);
+  }
+  & :is([stroke="white"], [stroke^="#fff"]) {
+    stroke: var(--background-color);
+  }
+  & :is([fill="black"], [fill^="#000"], :not([fill])) {
+    fill: var(--text-color);
+  }
+  & :is([fill="white"], [fill^="#fff"]) {
+    fill: var(--background-color);
+  }
+}
+</style>
+
+</head>
+<body class="xml2rfc">
+<table class="ears">
+<thead><tr>
+<td class="left">Internet-Draft</td>
+<td class="center">AAP</td>
+<td class="right">August 2026</td>
+</tr></thead>
+<tfoot><tr>
+<td class="left">Drapeau &amp; Pettersson</td>
+<td class="center">Expires 13 February 2027</td>
+<td class="right">[Page]</td>
+</tr></tfoot>
+</table>
+<div id="external-metadata" class="document-information"></div>
+<div id="internal-metadata" class="document-information">
+<dl id="identifiers">
+<dt class="label-workgroup">Workgroup:</dt>
+<dd class="workgroup">Network Working Group</dd>
+<dt class="label-internet-draft">Internet-Draft:</dt>
+<dd class="internet-draft">draft-agent-attestation-protocol-latest</dd>
+<dt class="label-published">Published:</dt>
+<dd class="published">
+<time datetime="2026-08-12" class="published">12 August 2026</time>
+    </dd>
+<dt class="label-intended-status">Intended Status:</dt>
+<dd class="intended-status">Standards Track</dd>
+<dt class="label-expires">Expires:</dt>
+<dd class="expires"><time datetime="2027-02-13">13 February 2027</time></dd>
+<dt class="label-authors">Authors:</dt>
+<dd class="authors">
+<div class="author">
+      <div class="author-name">R. Drapeau</div>
+<div class="org">Stripe</div>
+</div>
+<div class="author">
+      <div class="author-name">D. Pettersson</div>
+<div class="org">Shopify</div>
+</div>
+</dd>
+</dl>
+</div>
+<h1 id="title">Agent Attestation Protocol (AAP)</h1>
+<section id="section-abstract">
+      <h2 id="abstract"><a href="#abstract" class="selfRef">Abstract</a></h2>
+<p id="section-abstract-1">This document defines the core of the Agent Attestation Protocol (AAP): a way for a software agent to prove to a service that an accountable principal stands behind it, without revealing who. The credential the agent presents is the Agent Attestation Token (AAT): a short-lived, anonymous, unlinkable Privacy Pass token, issued by the principal's identity provider under a standing authorization and blindly signed, so the issuer cannot link a token to the principal who obtained it. The AAT attests exactly one thing — an accountable principal stands behind the presenting agent — and carries nothing else: no name, no fact, no handle that resolves to a person. Any party on the request path can verify it offline against the issuer's published keys.<a href="#section-abstract-1" class="pilcrow">¶</a></p>
+<p id="section-abstract-2">This document specifies the AAT's format, its issuance under a platform enrollment and a per-principal linking grant, its presentation alongside a Web Bot Auth request signature, and its verification. Companion documents extend this core: an identity claims module for consent-gated disclosure of facts about the principal, and a local-agent module for agents that run on hardware the platform does not control.<a href="#section-abstract-2" class="pilcrow">¶</a></p>
+</section>
+<div id="status-of-memo">
+<section id="section-boilerplate.1">
+        <h2 id="name-status-of-this-memo">
+<a href="#name-status-of-this-memo" class="section-name selfRef">Status of This Memo</a>
+        </h2>
+<p id="section-boilerplate.1-1">
+        This Internet-Draft is submitted in full conformance with the
+        provisions of BCP 78 and BCP 79.<a href="#section-boilerplate.1-1" class="pilcrow">¶</a></p>
+<p id="section-boilerplate.1-2">
+        Internet-Drafts are working documents of the Internet Engineering Task
+        Force (IETF). Note that other groups may also distribute working
+        documents as Internet-Drafts. The list of current Internet-Drafts is
+        at <span><a href="https://datatracker.ietf.org/drafts/current/">https://datatracker.ietf.org/drafts/current/</a></span>.<a href="#section-boilerplate.1-2" class="pilcrow">¶</a></p>
+<p id="section-boilerplate.1-3">
+        Internet-Drafts are draft documents valid for a maximum of six months
+        and may be updated, replaced, or obsoleted by other documents at any
+        time. It is inappropriate to use Internet-Drafts as reference
+        material or to cite them other than as "work in progress."<a href="#section-boilerplate.1-3" class="pilcrow">¶</a></p>
+<p id="section-boilerplate.1-4">
+        This Internet-Draft will expire on 13 February 2027.<a href="#section-boilerplate.1-4" class="pilcrow">¶</a></p>
+</section>
+</div>
+<div id="copyright">
+<section id="section-boilerplate.2">
+        <h2 id="name-copyright-notice">
+<a href="#name-copyright-notice" class="section-name selfRef">Copyright Notice</a>
+        </h2>
+<p id="section-boilerplate.2-1">
+            Copyright (c) 2026 IETF Trust and the persons identified as the
+            document authors. All rights reserved.<a href="#section-boilerplate.2-1" class="pilcrow">¶</a></p>
+<p id="section-boilerplate.2-2">
+            This document is subject to BCP 78 and the IETF Trust's Legal
+            Provisions Relating to IETF Documents
+            (<span><a href="https://trustee.ietf.org/license-info">https://trustee.ietf.org/license-info</a></span>) in effect on the date of
+            publication of this document. Please review these documents
+            carefully, as they describe your rights and restrictions with
+            respect to this document. Code Components extracted from this
+            document must include Revised BSD License text as described in
+            Section 4.e of the Trust Legal Provisions and are provided without
+            warranty as described in the Revised BSD License.<a href="#section-boilerplate.2-2" class="pilcrow">¶</a></p>
+</section>
+</div>
+<div id="toc">
+<section id="section-toc.1">
+        <a href="#" onclick="scroll(0,0)" class="toplink">▲</a><h2 id="name-table-of-contents">
+<a href="#name-table-of-contents" class="section-name selfRef">Table of Contents</a>
+        </h2>
+<nav class="toc"><ul class="compact toc ulBare ulEmpty">
+<li class="compact toc ulBare ulEmpty" id="section-toc.1-1.1">
+            <p id="section-toc.1-1.1.1"><a href="#section-1" class="auto internal xref">1</a>.  <a href="#name-introduction" class="internal xref">Introduction</a></p>
+<ul class="compact toc ulBare ulEmpty">
+<li class="compact toc ulBare ulEmpty" id="section-toc.1-1.1.2.1">
+                <p id="section-toc.1-1.1.2.1.1" class="keepWithNext"><a href="#section-1.1" class="auto internal xref">1.1</a>.  <a href="#name-scope-and-modules" class="internal xref">Scope and Modules</a></p>
+</li>
+              <li class="compact toc ulBare ulEmpty" id="section-toc.1-1.1.2.2">
+                <p id="section-toc.1-1.1.2.2.1" class="keepWithNext"><a href="#section-1.2" class="auto internal xref">1.2</a>.  <a href="#name-non-goals" class="internal xref">Non-Goals</a></p>
+</li>
+              <li class="compact toc ulBare ulEmpty" id="section-toc.1-1.1.2.3">
+                <p id="section-toc.1-1.1.2.3.1" class="keepWithNext"><a href="#section-1.3" class="auto internal xref">1.3</a>.  <a href="#name-conformance" class="internal xref">Conformance</a></p>
+</li>
+              <li class="compact toc ulBare ulEmpty" id="section-toc.1-1.1.2.4">
+                <p id="section-toc.1-1.1.2.4.1"><a href="#section-1.4" class="auto internal xref">1.4</a>.  <a href="#name-requirements-language" class="internal xref">Requirements Language</a></p>
+</li>
+              <li class="compact toc ulBare ulEmpty" id="section-toc.1-1.1.2.5">
+                <p id="section-toc.1-1.1.2.5.1"><a href="#section-1.5" class="auto internal xref">1.5</a>.  <a href="#name-terminology" class="internal xref">Terminology</a></p>
+</li>
+            </ul>
+</li>
+          <li class="compact toc ulBare ulEmpty" id="section-toc.1-1.2">
+            <p id="section-toc.1-1.2.1"><a href="#section-2" class="auto internal xref">2</a>.  <a href="#name-architecture-and-layer-mode" class="internal xref">Architecture and Layer Model</a></p>
+</li>
+          <li class="compact toc ulBare ulEmpty" id="section-toc.1-1.3">
+            <p id="section-toc.1-1.3.1"><a href="#section-3" class="auto internal xref">3</a>.  <a href="#name-protocol-overview" class="internal xref">Protocol Overview</a></p>
+</li>
+          <li class="compact toc ulBare ulEmpty" id="section-toc.1-1.4">
+            <p id="section-toc.1-1.4.1"><a href="#section-4" class="auto internal xref">4</a>.  <a href="#name-the-agent-attestation-token" class="internal xref">The Agent Attestation Token (AAT)</a></p>
+<ul class="compact toc ulBare ulEmpty">
+<li class="compact toc ulBare ulEmpty" id="section-toc.1-1.4.2.1">
+                <p id="section-toc.1-1.4.2.1.1"><a href="#section-4.1" class="auto internal xref">4.1</a>.  <a href="#name-format" class="internal xref">Format</a></p>
+</li>
+              <li class="compact toc ulBare ulEmpty" id="section-toc.1-1.4.2.2">
+                <p id="section-toc.1-1.4.2.2.1"><a href="#section-4.2" class="auto internal xref">4.2</a>.  <a href="#name-what-the-aat-asserts" class="internal xref">What the AAT Asserts</a></p>
+</li>
+              <li class="compact toc ulBare ulEmpty" id="section-toc.1-1.4.2.3">
+                <p id="section-toc.1-1.4.2.3.1"><a href="#section-4.3" class="auto internal xref">4.3</a>.  <a href="#name-public-metadata" class="internal xref">Public Metadata</a></p>
+</li>
+              <li class="compact toc ulBare ulEmpty" id="section-toc.1-1.4.2.4">
+                <p id="section-toc.1-1.4.2.4.1"><a href="#section-4.4" class="auto internal xref">4.4</a>.  <a href="#name-prohibited-content" class="internal xref">Prohibited Content</a></p>
+</li>
+              <li class="compact toc ulBare ulEmpty" id="section-toc.1-1.4.2.5">
+                <p id="section-toc.1-1.4.2.5.1"><a href="#section-4.5" class="auto internal xref">4.5</a>.  <a href="#name-issuance" class="internal xref">Issuance</a></p>
+<ul class="compact toc ulBare ulEmpty">
+<li class="compact toc ulBare ulEmpty" id="section-toc.1-1.4.2.5.2.1">
+                    <p id="section-toc.1-1.4.2.5.2.1.1"><a href="#section-4.5.1" class="auto internal xref">4.5.1</a>.  <a href="#name-platform-enrollment" class="internal xref">Platform Enrollment</a></p>
+</li>
+                  <li class="compact toc ulBare ulEmpty" id="section-toc.1-1.4.2.5.2.2">
+                    <p id="section-toc.1-1.4.2.5.2.2.1"><a href="#section-4.5.2" class="auto internal xref">4.5.2</a>.  <a href="#name-identity-linking" class="internal xref">Identity Linking</a></p>
+</li>
+                  <li class="compact toc ulBare ulEmpty" id="section-toc.1-1.4.2.5.2.3">
+                    <p id="section-toc.1-1.4.2.5.2.3.1"><a href="#section-4.5.3" class="auto internal xref">4.5.3</a>.  <a href="#name-token-issuance" class="internal xref">Token Issuance</a></p>
+</li>
+                  <li class="compact toc ulBare ulEmpty" id="section-toc.1-1.4.2.5.2.4">
+                    <p id="section-toc.1-1.4.2.5.2.4.1"><a href="#section-4.5.4" class="auto internal xref">4.5.4</a>.  <a href="#name-token-binding-and-theft-res" class="internal xref">Token Binding and Theft Resistance</a></p>
+</li>
+                </ul>
+</li>
+              <li class="compact toc ulBare ulEmpty" id="section-toc.1-1.4.2.6">
+                <p id="section-toc.1-1.4.2.6.1"><a href="#section-4.6" class="auto internal xref">4.6</a>.  <a href="#name-presentation" class="internal xref">Presentation</a></p>
+<ul class="compact toc ulBare ulEmpty">
+<li class="compact toc ulBare ulEmpty" id="section-toc.1-1.4.2.6.2.1">
+                    <p id="section-toc.1-1.4.2.6.2.1.1"><a href="#section-4.6.1" class="auto internal xref">4.6.1</a>.  <a href="#name-proactive-presentation" class="internal xref">Proactive Presentation</a></p>
+</li>
+                  <li class="compact toc ulBare ulEmpty" id="section-toc.1-1.4.2.6.2.2">
+                    <p id="section-toc.1-1.4.2.6.2.2.1"><a href="#section-4.6.2" class="auto internal xref">4.6.2</a>.  <a href="#name-session-establishment" class="internal xref">Session Establishment</a></p>
+</li>
+                </ul>
+</li>
+              <li class="compact toc ulBare ulEmpty" id="section-toc.1-1.4.2.7">
+                <p id="section-toc.1-1.4.2.7.1"><a href="#section-4.7" class="auto internal xref">4.7</a>.  <a href="#name-verification" class="internal xref">Verification</a></p>
+</li>
+            </ul>
+</li>
+          <li class="compact toc ulBare ulEmpty" id="section-toc.1-1.5">
+            <p id="section-toc.1-1.5.1"><a href="#section-5" class="auto internal xref">5</a>.  <a href="#name-discovery" class="internal xref">Discovery</a></p>
+<ul class="compact toc ulBare ulEmpty">
+<li class="compact toc ulBare ulEmpty" id="section-toc.1-1.5.2.1">
+                <p id="section-toc.1-1.5.2.1.1"><a href="#section-5.1" class="auto internal xref">5.1</a>.  <a href="#name-issuer-metadata" class="internal xref">Issuer Metadata</a></p>
+</li>
+              <li class="compact toc ulBare ulEmpty" id="section-toc.1-1.5.2.2">
+                <p id="section-toc.1-1.5.2.2.1"><a href="#section-5.2" class="auto internal xref">5.2</a>.  <a href="#name-issuer-keys" class="internal xref">Issuer Keys</a></p>
+</li>
+            </ul>
+</li>
+          <li class="compact toc ulBare ulEmpty" id="section-toc.1-1.6">
+            <p id="section-toc.1-1.6.1"><a href="#section-6" class="auto internal xref">6</a>.  <a href="#name-trust-model" class="internal xref">Trust Model</a></p>
+</li>
+          <li class="compact toc ulBare ulEmpty" id="section-toc.1-1.7">
+            <p id="section-toc.1-1.7.1"><a href="#section-7" class="auto internal xref">7</a>.  <a href="#name-relationship-to-existing-wo" class="internal xref">Relationship to Existing Work</a></p>
+<ul class="compact toc ulBare ulEmpty">
+<li class="compact toc ulBare ulEmpty" id="section-toc.1-1.7.2.1">
+                <p id="section-toc.1-1.7.2.1.1"><a href="#section-7.1" class="auto internal xref">7.1</a>.  <a href="#name-moderation-of-unlinkable-en" class="internal xref">Moderation of unLinkable Endorsements (MoLE)</a></p>
+</li>
+            </ul>
+</li>
+          <li class="compact toc ulBare ulEmpty" id="section-toc.1-1.8">
+            <p id="section-toc.1-1.8.1"><a href="#section-8" class="auto internal xref">8</a>.  <a href="#name-coexistence-with-authentica" class="internal xref">Coexistence with Authentication and Authorization</a></p>
+</li>
+          <li class="compact toc ulBare ulEmpty" id="section-toc.1-1.9">
+            <p id="section-toc.1-1.9.1"><a href="#section-9" class="auto internal xref">9</a>.  <a href="#name-privacy-considerations" class="internal xref">Privacy Considerations</a></p>
+</li>
+          <li class="compact toc ulBare ulEmpty" id="section-toc.1-1.10">
+            <p id="section-toc.1-1.10.1"><a href="#section-10" class="auto internal xref">10</a>. <a href="#name-security-considerations" class="internal xref">Security Considerations</a></p>
+</li>
+          <li class="compact toc ulBare ulEmpty" id="section-toc.1-1.11">
+            <p id="section-toc.1-1.11.1"><a href="#section-11" class="auto internal xref">11</a>. <a href="#name-iana-considerations" class="internal xref">IANA Considerations</a></p>
+</li>
+          <li class="compact toc ulBare ulEmpty" id="section-toc.1-1.12">
+            <p id="section-toc.1-1.12.1"><a href="#section-12" class="auto internal xref">12</a>. <a href="#name-open-items" class="internal xref">Open Items</a></p>
+</li>
+          <li class="compact toc ulBare ulEmpty" id="section-toc.1-1.13">
+            <p id="section-toc.1-1.13.1"><a href="#section-13" class="auto internal xref">13</a>. <a href="#name-acknowledgments" class="internal xref">Acknowledgments</a></p>
+</li>
+          <li class="compact toc ulBare ulEmpty" id="section-toc.1-1.14">
+            <p id="section-toc.1-1.14.1"><a href="#section-14" class="auto internal xref">14</a>. <a href="#name-references" class="internal xref">References</a></p>
+<ul class="compact toc ulBare ulEmpty">
+<li class="compact toc ulBare ulEmpty" id="section-toc.1-1.14.2.1">
+                <p id="section-toc.1-1.14.2.1.1"><a href="#section-14.1" class="auto internal xref">14.1</a>.  <a href="#name-normative-references" class="internal xref">Normative References</a></p>
+</li>
+              <li class="compact toc ulBare ulEmpty" id="section-toc.1-1.14.2.2">
+                <p id="section-toc.1-1.14.2.2.1"><a href="#section-14.2" class="auto internal xref">14.2</a>.  <a href="#name-informative-references" class="internal xref">Informative References</a></p>
+</li>
+            </ul>
+</li>
+          <li class="compact toc ulBare ulEmpty" id="section-toc.1-1.15">
+            <p id="section-toc.1-1.15.1"><a href="#appendix-A" class="auto internal xref">Appendix A</a>.  <a href="#name-examples" class="internal xref">Examples</a></p>
+</li>
+          <li class="compact toc ulBare ulEmpty" id="section-toc.1-1.16">
+            <p id="section-toc.1-1.16.1"><a href="#appendix-B" class="auto internal xref"></a><a href="#name-authors-addresses" class="internal xref">Authors' Addresses</a></p>
+</li>
+        </ul>
+</nav>
+</section>
+</div>
+<div id="intro">
+<section id="section-1">
+      <h2 id="name-introduction">
+<a href="#section-1" class="section-number selfRef">1. </a><a href="#name-introduction" class="section-name selfRef">Introduction</a>
+      </h2>
+<p id="section-1-1">Software agents arrive at the front door of services — websites, APIs, merchants — acting on behalf of a person. A service that wants to serve them has one decision to make at that door: admit this request, or not. AAP gives that decision a clean answer. From a single credential the agent presents, a service learns that an accountable principal stands behind the agent. It verifies that credential locally against the issuer's published keys and decides admission on accountability alone, holding no fact or handle that resolves to a person.<a href="#section-1-1" class="pilcrow">¶</a></p>
+<p id="section-1-2">That one property is enough for the door. A service deciding whether to serve, rate-limit, or refuse a request needs to know that a real party — reachable, and vouched for by a named issuer — stands behind the agent, not who that party is.<a href="#section-1-2" class="pilcrow">¶</a></p>
+<p id="section-1-3">The core protocol delivers four properties:<a href="#section-1-3" class="pilcrow">¶</a></p>
+<ul class="normal">
+<li class="normal" id="section-1-4.1">
+          <p id="section-1-4.1.1"><strong>Anonymous.</strong> The credential presented at the door — the Agent Attestation Token (AAT) — names no one and carries no fact about anyone. It is a Privacy Pass token (<span>[<a href="#RFC9576" class="cite xref">RFC9576</a>]</span>, <span>[<a href="#RFC9577" class="cite xref">RFC9577</a>]</span>, <span>[<a href="#RFC9578" class="cite xref">RFC9578</a>]</span>), issued by blind signing so the issuer cannot link a token to the principal who obtained it, and unlinkable across the parties that redeem and observe it.<a href="#section-1-4.1.1" class="pilcrow">¶</a></p>
+</li>
+        <li class="normal" id="section-1-4.2">
+          <p id="section-1-4.2.1"><strong>Accountable.</strong> Behind the anonymity stands a named issuer — the principal's own identity provider — that authenticated a real principal, authorized the agent platform to represent them, applies its eligibility and rate-limiting policy at issuance, and answers for the population of agents it admits.<a href="#section-1-4.2.1" class="pilcrow">¶</a></p>
+</li>
+        <li class="normal" id="section-1-4.3">
+          <p id="section-1-4.3.1"><strong>Verifiable by anyone, offline.</strong> Any party on the request path — an edge intermediary or the destination service — verifies the AAT against the issuer's published keys and a trust policy the verifier configures in advance. Each check is local: no per-check call and no online issuer dependency at request time.<a href="#section-1-4.3.1" class="pilcrow">¶</a></p>
+</li>
+        <li class="normal" id="section-1-4.4">
+          <p id="section-1-4.4.1"><strong>Pooled and challenge-responsive.</strong> The agent obtains AATs ahead of contact and, when a verifier challenges for one, answers from its pool. Admission needs one challenge-and-retry round trip with the service, and no synchronous issuance round trip at the door.<a href="#section-1-4.4.1" class="pilcrow">¶</a></p>
+</li>
+      </ul>
+<p id="section-1-5">These properties are structural, not policy promises. The token carries nothing to read and nothing the issuer can resolve to a person.<a href="#section-1-5" class="pilcrow">¶</a></p>
+<p id="section-1-6">AAP composes existing layers. The AAT is a Privacy Pass token; the per-request signature that binds it to the presenting agent, and that establishes which software is calling, is Web Bot Auth (<span>[<a href="#I-D.meunier-web-bot-auth-architecture" class="cite xref">I-D.meunier-web-bot-auth-architecture</a>]</span>) over HTTP Message Signatures (<span>[<a href="#RFC9421" class="cite xref">RFC9421</a>]</span>). What this core adds is the meaning bound to the token — a named, accountable issuer whose vouch it carries — and the enrollment, linking, issuance, presentation, and verification procedures around it.<a href="#section-1-6" class="pilcrow">¶</a></p>
+<div id="scope">
+<section id="section-1.1">
+        <h3 id="name-scope-and-modules">
+<a href="#section-1.1" class="section-number selfRef">1.1. </a><a href="#name-scope-and-modules" class="section-name selfRef">Scope and Modules</a>
+        </h3>
+<p id="section-1.1-1">This document is the AAP core and is freestanding: an implementation conforms to it alone (<a href="#conformance" class="auto internal xref">Section 1.3</a>). It normatively defines the attestation layer — the AAT's format, its anonymous issuance, its presentation alongside a Web Bot Auth signature, and offline verification.<a href="#section-1.1-1" class="pilcrow">¶</a></p>
+<p id="section-1.1-2">Companion documents layer additional capability on this core without changing it:<a href="#section-1.1-2" class="pilcrow">¶</a></p>
+<ul class="normal">
+<li class="normal" id="section-1.1-3.1">
+            <p id="section-1.1-3.1.1"><strong>Identity claims</strong> (<span>[<a href="#AAP-CLAIMS" class="cite xref">AAP-CLAIMS</a>]</span>): consent-gated disclosure of specific facts about the principal — a verified email, an address, an age — requested by a service and brokered by the agent. The AAT itself never carries such facts (<a href="#prohibited-content" class="auto internal xref">Section 4.4</a>).<a href="#section-1.1-3.1.1" class="pilcrow">¶</a></p>
+</li>
+          <li class="normal" id="section-1.1-3.2">
+            <p id="section-1.1-3.2.1"><strong>Local agents</strong> (<span>[<a href="#AAP-LOCAL" class="cite xref">AAP-LOCAL</a>]</span>): profiles for agents whose request-signing key lives on hardware the platform does not control — a platform's desktop or CLI surface, or an agent with no platform at all.<a href="#section-1.1-3.2.1" class="pilcrow">¶</a></p>
+</li>
+        </ul>
+<p id="section-1.1-4">The core provides two extension points the modules build on: the issuer metadata document accepts additional members (<a href="#issuer-metadata" class="auto internal xref">Section 5.1</a>), and the linking ceremony (<a href="#identity-linking" class="auto internal xref">Section 4.5.2</a>) is the anchor to which a module can attach further standing authorizations. A module states its own amendments; this core does not depend on any module.<a href="#section-1.1-4" class="pilcrow">¶</a></p>
+</section>
+</div>
+<div id="non-goals">
+<section id="section-1.2">
+        <h3 id="name-non-goals">
+<a href="#section-1.2" class="section-number selfRef">1.2. </a><a href="#name-non-goals" class="section-name selfRef">Non-Goals</a>
+        </h3>
+<p id="section-1.2-1">The following are out of scope and owned by neighboring layers. Agent-software identity — which vendor's software is calling — is established by Web Bot Auth beneath AAP (<a href="#architecture" class="auto internal xref">Section 2</a>), not by the AAT. Edge anti-abuse policy — how a CDN or WAF scores and throttles traffic — consumes the attestation but remains the edge's own decision. Domain transaction semantics — what a checkout, booking, or API call means and how the service authorizes it — are the service's concern; AAP carries no transaction.<a href="#section-1.2-1" class="pilcrow">¶</a></p>
+<p id="section-1.2-2">Delegated authority — the specific actions the principal authorized the agent to perform — is deferred to a future revision and in scope for it. It composes as a neighboring layer keyed to the same agent: authority travels in its own credential, bound to the Web Bot Auth key the AAT and the request signature already use, and addressed to a single resource.<a href="#section-1.2-2" class="pilcrow">¶</a></p>
+</section>
+</div>
+<div id="conformance">
+<section id="section-1.3">
+        <h3 id="name-conformance">
+<a href="#section-1.3" class="section-number selfRef">1.3. </a><a href="#name-conformance" class="section-name selfRef">Conformance</a>
+        </h3>
+<p id="section-1.3-1">An implementation conforms to AAP by implementing this core. Each module defines its own conformance on top of the core; the announceable surface of a deployment is the core plus whichever modules it ships.<a href="#section-1.3-1" class="pilcrow">¶</a></p>
+</section>
+</div>
+<div id="requirements-language">
+<section id="section-1.4">
+        <h3 id="name-requirements-language">
+<a href="#section-1.4" class="section-number selfRef">1.4. </a><a href="#name-requirements-language" class="section-name selfRef">Requirements Language</a>
+        </h3>
+<p id="section-1.4-1">The key words "MUST", "MUST NOT", "REQUIRED", "SHALL", "SHALL NOT", "SHOULD", "SHOULD NOT", "RECOMMENDED", "NOT RECOMMENDED", "MAY", and "OPTIONAL" in this document are to be interpreted as described in BCP 14 <span>[<a href="#RFC2119" class="cite xref">RFC2119</a>]</span> <span>[<a href="#RFC8174" class="cite xref">RFC8174</a>]</span> when, and only when, they appear in all capitals, as shown here.<a href="#section-1.4-1" class="pilcrow">¶</a></p>
+</section>
+</div>
+<div id="terminology">
+<section id="section-1.5">
+        <h3 id="name-terminology">
+<a href="#section-1.5" class="section-number selfRef">1.5. </a><a href="#name-terminology" class="section-name selfRef">Terminology</a>
+        </h3>
+<ul class="normal">
+<li class="normal" id="section-1.5-1.1">
+            <p id="section-1.5-1.1.1">Principal: the authority on whose behalf the agent acts; today, the human behind it. Authorizes issuance.<a href="#section-1.5-1.1.1" class="pilcrow">¶</a></p>
+</li>
+          <li class="normal" id="section-1.5-1.2">
+            <p id="section-1.5-1.2.1">Agent: software acting on the principal's behalf; the running instance in one session. Holds the agent key that its attestation and requests are bound to.<a href="#section-1.5-1.2.1" class="pilcrow">¶</a></p>
+</li>
+          <li class="normal" id="section-1.5-1.3">
+            <p id="section-1.5-1.3.1">Agent Platform: the vendor or operator of the agent software. Enrolled with the issuer (<a href="#platform-enrollment" class="auto internal xref">Section 4.5.1</a>) and holds the standing relationship with it; persists across sessions, where the agent does not.<a href="#section-1.5-1.3.1" class="pilcrow">¶</a></p>
+</li>
+          <li class="normal" id="section-1.5-1.4">
+            <p id="section-1.5-1.4.1">Issuer: the identity provider that vouches for the principal. Authenticates the principal, enforces its issuance policy, and runs the anonymous token issuance protocol. In this revision the Issuer also performs the Privacy Pass Attester role; splitting them is an extension (<a href="#trust-model" class="auto internal xref">Section 6</a>).<a href="#section-1.5-1.4.1" class="pilcrow">¶</a></p>
+</li>
+          <li class="normal" id="section-1.5-1.5">
+            <p id="section-1.5-1.5.1">Verifier: any party that validates an AAT. Makes no online call to the issuer to verify a token, but needs the issuer's public keys and a trust policy configured ahead of time.<a href="#section-1.5-1.5.1" class="pilcrow">¶</a></p>
+</li>
+          <li class="normal" id="section-1.5-1.6">
+            <p id="section-1.5-1.6.1">Edge: an intermediary on the request path, such as a CDN, WAF, or CAPTCHA provider.<a href="#section-1.5-1.6.1" class="pilcrow">¶</a></p>
+</li>
+          <li class="normal" id="section-1.5-1.7">
+            <p id="section-1.5-1.7.1">Service: the destination the agent acts against, such as a merchant or an API. Decides its own trust policy.<a href="#section-1.5-1.7.1" class="pilcrow">¶</a></p>
+</li>
+          <li class="normal" id="section-1.5-1.8">
+            <p id="section-1.5-1.8.1">AAT: the Agent Attestation Token, the anonymous credential defined in <a href="#aat" class="auto internal xref">Section 4</a>.<a href="#section-1.5-1.8.1" class="pilcrow">¶</a></p>
+</li>
+        </ul>
+<p id="section-1.5-2">Examples use domain names reserved by <span>[<a href="#RFC2606" class="cite xref">RFC2606</a>]</span> and identifiers that are not registered assignments.<a href="#section-1.5-2" class="pilcrow">¶</a></p>
+</section>
+</div>
+</section>
+</div>
+<div id="architecture">
+<section id="section-2">
+      <h2 id="name-architecture-and-layer-mode">
+<a href="#section-2" class="section-number selfRef">2. </a><a href="#name-architecture-and-layer-mode" class="section-name selfRef">Architecture and Layer Model</a>
+      </h2>
+<p id="section-2-1">Agent traffic at the front door is governed by a stack of layers, each answering one question. This core occupies the attestation layer. It depends on the agent-software identity layer below it, delegates account authentication and authorization to OAuth and its kin above it (<a href="#authn-coexistence" class="auto internal xref">Section 8</a>), and defers the authority layer (<a href="#non-goals" class="auto internal xref">Section 1.2</a>).<a href="#section-2-1" class="pilcrow">¶</a></p>
+<table class="center" id="table-1">
+        <caption><a href="#table-1" class="selfRef">Table 1</a></caption>
+<thead>
+          <tr>
+            <th class="text-left" rowspan="1" colspan="1">Layer</th>
+            <th class="text-left" rowspan="1" colspan="1">Question it answers</th>
+            <th class="text-left" rowspan="1" colspan="1">Mechanism</th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr>
+            <td class="text-left" rowspan="1" colspan="1">Agent-software identity</td>
+            <td class="text-left" rowspan="1" colspan="1">Which software is calling?</td>
+            <td class="text-left" rowspan="1" colspan="1">Web Bot Auth / HTTP Message Signatures (<span>[<a href="#RFC9421" class="cite xref">RFC9421</a>]</span>); for device-resident agents, a platform key endorsement (<span>[<a href="#AAP-LOCAL" class="cite xref">AAP-LOCAL</a>]</span>)</td>
+          </tr>
+          <tr>
+            <td class="text-left" rowspan="1" colspan="1">
+              <strong>Front-door attestation (this document)</strong>
+</td>
+            <td class="text-left" rowspan="1" colspan="1">
+              <strong>Is an accountable principal behind this agent?</strong>
+</td>
+            <td class="text-left" rowspan="1" colspan="1">
+              <strong>AAT — anonymous Privacy Pass token + Web Bot Auth signature</strong>
+</td>
+          </tr>
+          <tr>
+            <td class="text-left" rowspan="1" colspan="1">Identity disclosure (module)</td>
+            <td class="text-left" rowspan="1" colspan="1">Who is the principal, and what about them?</td>
+            <td class="text-left" rowspan="1" colspan="1">Consented disclosure lanes (<span>[<a href="#AAP-CLAIMS" class="cite xref">AAP-CLAIMS</a>]</span>)</td>
+          </tr>
+          <tr>
+            <td class="text-left" rowspan="1" colspan="1">Account authentication and authorization</td>
+            <td class="text-left" rowspan="1" colspan="1">Is this a known account, and what is it permitted?</td>
+            <td class="text-left" rowspan="1" colspan="1">Delegated to OAuth and OpenID Connect, unchanged (<a href="#authn-coexistence" class="auto internal xref">Section 8</a>)</td>
+          </tr>
+          <tr>
+            <td class="text-left" rowspan="1" colspan="1">Delegated authority</td>
+            <td class="text-left" rowspan="1" colspan="1">What may the agent do?</td>
+            <td class="text-left" rowspan="1" colspan="1">Deferred (<a href="#non-goals" class="auto internal xref">Section 1.2</a>)</td>
+          </tr>
+        </tbody>
+      </table>
+<p id="section-2-3">The governing split: the front door is anonymous. At the door, the AAT attests an accountable principal and admission turns on that alone; no fact about the principal travels there. One agent key carries the work of both bottom layers: the Web Bot Auth signature that establishes which software is calling also binds the AAT to the presenter, so the agent proves possession once and needs no second credential at the door.<a href="#section-2-3" class="pilcrow">¶</a></p>
+<p id="section-2-4">A service that maintains its own accounts can offer the account-authenticated posture beside the anonymous door; the choice between them belongs to the agent (<a href="#authn-coexistence" class="auto internal xref">Section 8</a>).<a href="#section-2-4" class="pilcrow">¶</a></p>
+</section>
+</div>
+<div id="overview">
+<section id="section-3">
+      <h2 id="name-protocol-overview">
+<a href="#section-3" class="section-number selfRef">3. </a><a href="#name-protocol-overview" class="section-name selfRef">Protocol Overview</a>
+      </h2>
+<p id="section-3-1">This section is non-normative.<a href="#section-3-1" class="pilcrow">¶</a></p>
+<p id="section-3-2">The core has four phases. Enrollment and linking happen ahead of everything; provisioning and admission recur.<a href="#section-3-2" class="pilcrow">¶</a></p>
+<ol start="1" type="1" class="normal type-1" id="section-3-3">
+<li id="section-3-3.1">
+          <p id="section-3-3.1.1"><strong>Enrollment (once, per platform).</strong> Ahead of any principal, the agent platform is admitted to the issuer's allow-list through an out-of-band review, with the OAuth client identity it will authenticate under pinned (<a href="#platform-enrollment" class="auto internal xref">Section 4.5.1</a>). This is operator vetting between two organizations, not a per-user step.<a href="#section-3-3.1.1" class="pilcrow">¶</a></p>
+</li>
+        <li id="section-3-3.2">
+          <p id="section-3-3.2.1"><strong>Linking (once, per principal).</strong> The principal authenticates to their issuer and authorizes an enrolled agent platform to obtain attestations on their behalf, establishing a standing linking grant (<a href="#identity-linking" class="auto internal xref">Section 4.5.2</a>). This is the consent anchor for everything downstream.<a href="#section-3-3.2.1" class="pilcrow">¶</a></p>
+</li>
+        <li id="section-3-3.3">
+          <p id="section-3-3.3.1"><strong>Provisioning (ahead of use).</strong> Under that grant, the agent obtains a pool of anonymous AATs by blind issuance: the issuer signs tokens it cannot later link to a redemption (<a href="#token-issuance" class="auto internal xref">Section 4.5.3</a>). Provisioning ahead of contact is what lets the agent answer a verifier's challenge from its pool with no synchronous issuance round trip at the door.<a href="#section-3-3.3.1" class="pilcrow">¶</a></p>
+</li>
+        <li id="section-3-3.4">
+          <p id="section-3-3.4.1"><strong>Admission (at the front door).</strong> On first contact the service challenges for an AAT, and the agent presents one from its pool accompanied by a Web Bot Auth signature over the request (<a href="#presentation" class="auto internal xref">Section 4.6</a>). Any party on the path — edge or service — verifies the token offline against the issuer's published keys (<a href="#verification" class="auto internal xref">Section 4.7</a>), learns that an accountable principal is behind the agent, and admits the request. The verifier then establishes its own session for the rest of the interaction (<a href="#session-establishment" class="auto internal xref">Section 4.6.2</a>).<a href="#section-3-3.4.1" class="pilcrow">¶</a></p>
+</li>
+      </ol>
+<div id="section-3-4">
+        <div class="alignCenter art-svg artwork" id="section-3-4.1">
+<svg xmlns="http://www.w3.org/2000/svg" version="1.1" height="576" width="560" viewBox="0 0 560 576" class="diagram" text-anchor="middle" font-family="monospace" font-size="13px" stroke-linecap="round">
+            <path d="M 56,96 L 56,112" fill="none" stroke="black"></path>
+            <path d="M 56,144 L 56,160" fill="none" stroke="black"></path>
+            <path d="M 56,192 L 56,208" fill="none" stroke="black"></path>
+            <path d="M 56,240 L 56,320" fill="none" stroke="black"></path>
+            <path d="M 200,96 L 200,112" fill="none" stroke="black"></path>
+            <path d="M 200,144 L 200,160" fill="none" stroke="black"></path>
+            <path d="M 200,192 L 200,208" fill="none" stroke="black"></path>
+            <path d="M 200,240 L 200,320" fill="none" stroke="black"></path>
+            <path d="M 344,96 L 344,112" fill="none" stroke="black"></path>
+            <path d="M 344,144 L 344,160" fill="none" stroke="black"></path>
+            <path d="M 344,192 L 344,208" fill="none" stroke="black"></path>
+            <path d="M 344,240 L 344,320" fill="none" stroke="black"></path>
+            <path d="M 480,96 L 480,112" fill="none" stroke="black"></path>
+            <path d="M 480,144 L 480,160" fill="none" stroke="black"></path>
+            <path d="M 480,192 L 480,208" fill="none" stroke="black"></path>
+            <path d="M 480,240 L 480,320" fill="none" stroke="black"></path>
+            <path d="M 544,288 L 544,304" fill="none" stroke="black"></path>
+            <path d="M 208,96 L 224,96" fill="none" stroke="black"></path>
+            <path d="M 240,96 L 336,96" fill="none" stroke="black"></path>
+            <path d="M 208,112 Q 210,108.8 212,112 Q 214,115.2 216,112 Q 218,108.8 220,112 Q 222,115.2 224,112" fill="none" stroke="black"></path>
+            <path d="M 240,112 Q 242,108.8 244,112 Q 246,115.2 248,112 Q 250,108.8 252,112 Q 254,115.2 256,112 Q 258,108.8 260,112 Q 262,115.2 264,112 Q 266,108.8 268,112 Q 270,115.2 272,112 Q 274,108.8 276,112 Q 278,115.2 280,112 Q 282,108.8 284,112 Q 286,115.2 288,112 Q 290,108.8 292,112 Q 294,115.2 296,112 Q 298,108.8 300,112 Q 302,115.2 304,112 Q 306,108.8 308,112 Q 310,115.2 312,112 Q 314,108.8 316,112 Q 318,115.2 320,112 Q 322,108.8 324,112 Q 326,115.2 328,112 Q 330,108.8 332,112 Q 334,115.2 336,112" fill="none" stroke="black"></path>
+            <path d="M 64,144 L 80,144" fill="none" stroke="black"></path>
+            <path d="M 96,144 L 336,144" fill="none" stroke="black"></path>
+            <path d="M 208,160 Q 210,156.8 212,160 Q 214,163.2 216,160 Q 218,156.8 220,160 Q 222,163.2 224,160" fill="none" stroke="black"></path>
+            <path d="M 240,160 Q 242,156.8 244,160 Q 246,163.2 248,160 Q 250,156.8 252,160 Q 254,163.2 256,160 Q 258,156.8 260,160 Q 262,163.2 264,160 Q 266,156.8 268,160 Q 270,163.2 272,160 Q 274,156.8 276,160 Q 278,163.2 280,160 Q 282,156.8 284,160 Q 286,163.2 288,160 Q 290,156.8 292,160 Q 294,163.2 296,160 Q 298,156.8 300,160 Q 302,163.2 304,160 Q 306,156.8 308,160 Q 310,163.2 312,160 Q 314,156.8 316,160 Q 318,163.2 320,160 Q 322,156.8 324,160 Q 326,163.2 328,160 Q 330,156.8 332,160 Q 334,163.2 336,160" fill="none" stroke="black"></path>
+            <path d="M 208,192 L 224,192" fill="none" stroke="black"></path>
+            <path d="M 240,192 L 336,192" fill="none" stroke="black"></path>
+            <path d="M 208,208 Q 210,204.8 212,208 Q 214,211.2 216,208 Q 218,204.8 220,208 Q 222,211.2 224,208" fill="none" stroke="black"></path>
+            <path d="M 240,208 Q 242,204.8 244,208 Q 246,211.2 248,208 Q 250,204.8 252,208 Q 254,211.2 256,208 Q 258,204.8 260,208 Q 262,211.2 264,208 Q 266,204.8 268,208 Q 270,211.2 272,208 Q 274,204.8 276,208 Q 278,211.2 280,208 Q 282,204.8 284,208 Q 286,211.2 288,208 Q 290,204.8 292,208 Q 294,211.2 296,208 Q 298,204.8 300,208 Q 302,211.2 304,208 Q 306,204.8 308,208 Q 310,211.2 312,208 Q 314,204.8 316,208 Q 318,211.2 320,208 Q 322,204.8 324,208 Q 326,211.2 328,208 Q 330,204.8 332,208 Q 334,211.2 336,208" fill="none" stroke="black"></path>
+            <path d="M 208,240 L 224,240" fill="none" stroke="black"></path>
+            <path d="M 240,240 L 472,240" fill="none" stroke="black"></path>
+            <path d="M 208,256 Q 210,252.8 212,256 Q 214,259.2 216,256 Q 218,252.8 220,256 Q 222,259.2 224,256 Q 226,252.8 228,256 Q 230,259.2 232,256 Q 234,252.8 236,256 Q 238,259.2 240,256 Q 242,252.8 244,256 Q 246,259.2 248,256 Q 250,252.8 252,256 Q 254,259.2 256,256 Q 258,252.8 260,256 Q 262,259.2 264,256 Q 266,252.8 268,256 Q 270,259.2 272,256 Q 274,252.8 276,256 Q 278,259.2 280,256 Q 282,252.8 284,256 Q 286,259.2 288,256 Q 290,252.8 292,256 Q 294,259.2 296,256 Q 298,252.8 300,256 Q 302,259.2 304,256 Q 306,252.8 308,256 Q 310,259.2 312,256 Q 314,252.8 316,256 Q 318,259.2 320,256 Q 322,252.8 324,256 Q 326,259.2 328,256 Q 330,252.8 332,256 Q 334,259.2 336,256 Q 338,252.8 340,256 Q 342,259.2 344,256 Q 346,252.8 348,256 Q 350,259.2 352,256 Q 354,252.8 356,256 Q 358,259.2 360,256 Q 362,252.8 364,256 Q 366,259.2 368,256" fill="none" stroke="black"></path>
+            <path d="M 384,256 Q 386,252.8 388,256 Q 390,259.2 392,256 Q 394,252.8 396,256 Q 398,259.2 400,256 Q 402,252.8 404,256 Q 406,259.2 408,256 Q 410,252.8 412,256 Q 414,259.2 416,256 Q 418,252.8 420,256 Q 422,259.2 424,256 Q 426,252.8 428,256 Q 430,259.2 432,256 Q 434,252.8 436,256 Q 438,259.2 440,256 Q 442,252.8 444,256 Q 446,259.2 448,256 Q 450,252.8 452,256 Q 454,259.2 456,256 Q 458,252.8 460,256 Q 462,259.2 464,256 Q 466,252.8 468,256 Q 470,259.2 472,256" fill="none" stroke="black"></path>
+            <path d="M 208,272 L 224,272" fill="none" stroke="black"></path>
+            <path d="M 240,272 L 472,272" fill="none" stroke="black"></path>
+            <path d="M 488,288 L 504,288" fill="none" stroke="black"></path>
+            <path d="M 528,288 L 544,288" fill="none" stroke="black"></path>
+            <path d="M 488,304 L 544,304" fill="none" stroke="black"></path>
+            <path d="M 208,320 Q 210,316.8 212,320 Q 214,323.2 216,320 Q 218,316.8 220,320 Q 222,323.2 224,320 Q 226,316.8 228,320 Q 230,323.2 232,320 Q 234,316.8 236,320 Q 238,323.2 240,320 Q 242,316.8 244,320 Q 246,323.2 248,320 Q 250,316.8 252,320 Q 254,323.2 256,320 Q 258,316.8 260,320 Q 262,323.2 264,320 Q 266,316.8 268,320 Q 270,323.2 272,320 Q 274,316.8 276,320 Q 278,323.2 280,320 Q 282,316.8 284,320 Q 286,323.2 288,320 Q 290,316.8 292,320 Q 294,323.2 296,320 Q 298,316.8 300,320 Q 302,323.2 304,320 Q 306,316.8 308,320 Q 310,323.2 312,320 Q 314,316.8 316,320 Q 318,323.2 320,320 Q 322,316.8 324,320 Q 326,323.2 328,320 Q 330,316.8 332,320 Q 334,323.2 336,320 Q 338,316.8 340,320 Q 342,323.2 344,320 Q 346,316.8 348,320 Q 350,323.2 352,320 Q 354,316.8 356,320 Q 358,323.2 360,320 Q 362,316.8 364,320 Q 366,323.2 368,320" fill="none" stroke="black"></path>
+            <path d="M 392,320 Q 394,316.8 396,320 Q 398,323.2 400,320 Q 402,316.8 404,320 Q 406,323.2 408,320 Q 410,316.8 412,320 Q 414,323.2 416,320 Q 418,316.8 420,320 Q 422,323.2 424,320 Q 426,316.8 428,320 Q 430,323.2 432,320 Q 434,316.8 436,320 Q 438,323.2 440,320 Q 442,316.8 444,320 Q 446,323.2 448,320 Q 450,316.8 452,320 Q 454,323.2 456,320 Q 458,316.8 460,320 Q 462,323.2 464,320 Q 466,316.8 468,320 Q 470,323.2 472,320" fill="none" stroke="black"></path>
+            <path d="M 72,352 L 104,352" fill="none" stroke="black"></path>
+            <path d="M 192,352 Q 194,348.8 196,352 Q 198,355.2 200,352 Q 202,348.8 204,352 Q 206,355.2 208,352 Q 210,348.8 212,352 Q 214,355.2 216,352 Q 218,348.8 220,352 Q 222,355.2 224,352" fill="none" stroke="black"></path>
+            <path d="M 320,352 L 344,352" fill="none" stroke="black"></path>
+            <polygon class="arrowhead" points="496,304 484,298.4 484,309.6" fill="black" transform="rotate(180,488,304)"></polygon>
+            <polygon class="arrowhead" points="480,272 468,266.4 468,277.6" fill="black" transform="rotate(0,472,272)"></polygon>
+            <polygon class="arrowhead" points="480,240 468,234.4 468,245.6" fill="black" transform="rotate(0,472,240)"></polygon>
+            <polygon class="arrowhead" points="344,192 332,186.4 332,197.6" fill="black" transform="rotate(0,336,192)"></polygon>
+            <polygon class="arrowhead" points="344,144 332,138.4 332,149.6" fill="black" transform="rotate(0,336,144)"></polygon>
+            <polygon class="arrowhead" points="344,96 332,90.4 332,101.6" fill="black" transform="rotate(0,336,96)"></polygon>
+            <polygon class="arrowhead" points="232,352 220,346.4 220,357.6" fill="black" transform="rotate(0,224,352)"></polygon>
+            <polygon class="arrowhead" points="216,320 204,314.4 204,325.6" fill="black" transform="rotate(180,208,320)"></polygon>
+            <polygon class="arrowhead" points="216,256 204,250.4 204,261.6" fill="black" transform="rotate(180,208,256)"></polygon>
+            <polygon class="arrowhead" points="216,208 204,202.4 204,213.6" fill="black" transform="rotate(180,208,208)"></polygon>
+            <polygon class="arrowhead" points="216,160 204,154.4 204,165.6" fill="black" transform="rotate(180,208,160)"></polygon>
+            <polygon class="arrowhead" points="216,112 204,106.4 204,117.6" fill="black" transform="rotate(180,208,112)"></polygon>
+            <polygon class="arrowhead" points="112,352 100,346.4 100,357.6" fill="black" transform="rotate(0,104,352)"></polygon>
+            <g class="text">
+              <text x="56" y="36">Principal</text>
+              <text x="152" y="36">Agent</text>
+              <text x="220" y="36">(platform)</text>
+              <text x="340" y="36">Issuer</text>
+              <text x="432" y="36">Service</text>
+              <text x="472" y="36">/</text>
+              <text x="516" y="36">Verifier</text>
+              <text x="56" y="52">P</text>
+              <text x="196" y="52">AP</text>
+              <text x="344" y="52">I</text>
+              <text x="480" y="52">S</text>
+              <text x="56" y="68">|</text>
+              <text x="200" y="68">|</text>
+              <text x="344" y="68">|</text>
+              <text x="480" y="68">|</text>
+              <text x="8" y="84">[</text>
+              <text x="92" y="84">Note</text>
+              <text x="132" y="84">over</text>
+              <text x="176" y="84">AP,I:</text>
+              <text x="212" y="84">1.</text>
+              <text x="268" y="84">Enrollment</text>
+              <text x="340" y="84">(once,</text>
+              <text x="384" y="84">per</text>
+              <text x="440" y="84">platform)</text>
+              <text x="552" y="84">]</text>
+              <text x="232" y="100">1</text>
+              <text x="232" y="116">2</text>
+              <text x="8" y="132">[</text>
+              <text x="100" y="132">Note</text>
+              <text x="140" y="132">over</text>
+              <text x="180" y="132">P,I:</text>
+              <text x="212" y="132">2.</text>
+              <text x="256" y="132">Linking</text>
+              <text x="316" y="132">(once,</text>
+              <text x="360" y="132">per</text>
+              <text x="420" y="132">principal)</text>
+              <text x="552" y="132">]</text>
+              <text x="88" y="148">3</text>
+              <text x="232" y="164">4</text>
+              <text x="8" y="180">[</text>
+              <text x="108" y="180">Note</text>
+              <text x="148" y="180">over</text>
+              <text x="192" y="180">AP,I:</text>
+              <text x="228" y="180">3.</text>
+              <text x="292" y="180">Provisioning</text>
+              <text x="372" y="180">(ahead</text>
+              <text x="412" y="180">of</text>
+              <text x="444" y="180">use)</text>
+              <text x="552" y="180">]</text>
+              <text x="232" y="196">5</text>
+              <text x="232" y="212">6</text>
+              <text x="8" y="228">[</text>
+              <text x="132" y="228">Note</text>
+              <text x="172" y="228">over</text>
+              <text x="216" y="228">AP,S:</text>
+              <text x="252" y="228">4.</text>
+              <text x="304" y="228">Admission</text>
+              <text x="372" y="228">(front</text>
+              <text x="424" y="228">door)</text>
+              <text x="552" y="228">]</text>
+              <text x="232" y="244">7</text>
+              <text x="376" y="260">8</text>
+              <text x="232" y="276">9</text>
+              <text x="516" y="292">10</text>
+              <text x="380" y="324">11</text>
+              <text x="32" y="356">Legend:</text>
+              <text x="148" y="356">message;</text>
+              <text x="272" y="356">response;</text>
+              <text x="392" y="356">self-call</text>
+              <text x="40" y="388">Messages:</text>
+              <text x="16" y="404">(1)</text>
+              <text x="44" y="404">AP</text>
+              <text x="68" y="404">-&gt;</text>
+              <text x="92" y="404">I:</text>
+              <text x="132" y="404">enroll</text>
+              <text x="176" y="404">out</text>
+              <text x="204" y="404">of</text>
+              <text x="236" y="404">band</text>
+              <text x="308" y="404">(allow-list;</text>
+              <text x="376" y="404">pin</text>
+              <text x="420" y="404">client</text>
+              <text x="488" y="404">identity)</text>
+              <text x="16" y="420">(2)</text>
+              <text x="40" y="420">I</text>
+              <text x="60" y="420">~&gt;</text>
+              <text x="88" y="420">AP:</text>
+              <text x="140" y="420">enrolled</text>
+              <text x="204" y="420">client</text>
+              <text x="268" y="420">identity</text>
+              <text x="16" y="436">(3)</text>
+              <text x="40" y="436">P</text>
+              <text x="60" y="436">-&gt;</text>
+              <text x="84" y="436">I:</text>
+              <text x="152" y="436">authenticate;</text>
+              <text x="248" y="436">authorize</text>
+              <text x="348" y="436">representation</text>
+              <text x="16" y="452">(4)</text>
+              <text x="40" y="452">I</text>
+              <text x="60" y="452">~&gt;</text>
+              <text x="88" y="452">AP:</text>
+              <text x="140" y="452">standing</text>
+              <text x="208" y="452">linking</text>
+              <text x="264" y="452">grant</text>
+              <text x="16" y="468">(5)</text>
+              <text x="44" y="468">AP</text>
+              <text x="68" y="468">-&gt;</text>
+              <text x="92" y="468">I:</text>
+              <text x="136" y="468">request</text>
+              <text x="196" y="468">tokens</text>
+              <text x="248" y="468">under</text>
+              <text x="296" y="468">grant</text>
+              <text x="348" y="468">(blind</text>
+              <text x="416" y="468">issuance)</text>
+              <text x="16" y="484">(6)</text>
+              <text x="40" y="484">I</text>
+              <text x="60" y="484">~&gt;</text>
+              <text x="88" y="484">AP:</text>
+              <text x="124" y="484">pool</text>
+              <text x="156" y="484">of</text>
+              <text x="208" y="484">anonymous</text>
+              <text x="268" y="484">AATs</text>
+              <text x="16" y="500">(7)</text>
+              <text x="44" y="500">AP</text>
+              <text x="68" y="500">-&gt;</text>
+              <text x="92" y="500">S:</text>
+              <text x="136" y="500">request</text>
+              <text x="176" y="500">+</text>
+              <text x="200" y="500">Web</text>
+              <text x="232" y="500">Bot</text>
+              <text x="268" y="500">Auth</text>
+              <text x="328" y="500">signature</text>
+              <text x="16" y="516">(8)</text>
+              <text x="40" y="516">S</text>
+              <text x="60" y="516">~&gt;</text>
+              <text x="88" y="516">AP:</text>
+              <text x="120" y="516">401</text>
+              <text x="188" y="516">PrivateToken</text>
+              <text x="280" y="516">challenge</text>
+              <text x="360" y="516">(accepted</text>
+              <text x="436" y="516">issuers)</text>
+              <text x="16" y="532">(9)</text>
+              <text x="44" y="532">AP</text>
+              <text x="68" y="532">-&gt;</text>
+              <text x="92" y="532">S:</text>
+              <text x="128" y="532">retry</text>
+              <text x="160" y="532">+</text>
+              <text x="184" y="532">AAT</text>
+              <text x="220" y="532">from</text>
+              <text x="260" y="532">pool</text>
+              <text x="288" y="532">+</text>
+              <text x="312" y="532">Web</text>
+              <text x="344" y="532">Bot</text>
+              <text x="380" y="532">Auth</text>
+              <text x="440" y="532">signature</text>
+              <text x="20" y="548">(10)</text>
+              <text x="48" y="548">S</text>
+              <text x="68" y="548">-&gt;</text>
+              <text x="92" y="548">S:</text>
+              <text x="132" y="548">verify</text>
+              <text x="176" y="548">AAT</text>
+              <text x="224" y="548">offline</text>
+              <text x="272" y="548">(no</text>
+              <text x="316" y="548">issuer</text>
+              <text x="368" y="548">call)</text>
+              <text x="20" y="564">(11)</text>
+              <text x="48" y="564">S</text>
+              <text x="68" y="564">~&gt;</text>
+              <text x="96" y="564">AP:</text>
+              <text x="152" y="564">admitted;</text>
+              <text x="228" y="564">verifier</text>
+              <text x="296" y="564">session</text>
+              <text x="376" y="564">established</text>
+            </g>
+          </svg><a href="#section-3-4.1" class="pilcrow">¶</a>
+</div>
+</div>
+<p id="section-3-5"><em>Figure: the common arc — link once, provision a pool, admit anonymously.</em><a href="#section-3-5" class="pilcrow">¶</a></p>
+</section>
+</div>
+<div id="aat">
+<section id="section-4">
+      <h2 id="name-the-agent-attestation-token">
+<a href="#section-4" class="section-number selfRef">4. </a><a href="#name-the-agent-attestation-token" class="section-name selfRef">The Agent Attestation Token (AAT)</a>
+      </h2>
+<p id="section-4-1">The AAT is an anonymous, unlinkable token establishing only that a trusted issuer vouches for an accountable principal behind this agent. It names no principal and carries no facts, by construction: it is a Privacy Pass token, not an identity document. The governing principle:<a href="#section-4-1" class="pilcrow">¶</a></p>
+<ul class="normal ulEmpty">
+<li class="normal ulEmpty" id="section-4-2.1">
+          <p id="section-4-2.1.1">Attestation is ambient and anonymous; identity is requested and consented. The credential that travels to every party on the request path carries no facts and no handle that resolves to a person.<a href="#section-4-2.1.1" class="pilcrow">¶</a></p>
+</li>
+      </ul>
+<p id="section-4-3">The AAT carries no handle for any party to observe across requests or for the issuer to resolve, so the front door presents no correlation surface.<a href="#section-4-3" class="pilcrow">¶</a></p>
+<div id="format">
+<section id="section-4.1">
+        <h3 id="name-format">
+<a href="#section-4.1" class="section-number selfRef">4.1. </a><a href="#name-format" class="section-name selfRef">Format</a>
+        </h3>
+<p id="section-4.1-1">An AAT is a Privacy Pass token (<span>[<a href="#RFC9576" class="cite xref">RFC9576</a>]</span>, <span>[<a href="#RFC9577" class="cite xref">RFC9577</a>]</span>, <span>[<a href="#RFC9578" class="cite xref">RFC9578</a>]</span>), profiled for agent attestation. Implementations MUST support the publicly verifiable token type (Blind RSA, type <code>0x0002</code>, Section 8.2.1 of <span>[<a href="#RFC9578" class="cite xref">RFC9578</a>]</span>), so that any verifier holding the issuer's public key verifies a token offline, without contacting the issuer and without being the issuer. The privately verifiable type (VOPRF, <code>0x0001</code>) requires the verifier to be the issuer and so MUST NOT be used for ambient attestation, where the verifier and issuer are different parties by assumption.<a href="#section-4.1-1" class="pilcrow">¶</a></p>
+<p id="section-4.1-2">A redeemed AAT is the 0x0002 Token structure of Section 2.2 of <span>[<a href="#RFC9577" class="cite xref">RFC9577</a>]</span>:<a href="#section-4.1-2" class="pilcrow">¶</a></p>
+<div class="alignLeft art-text artwork" id="section-4.1-3">
+<pre>
+struct {
+    uint16_t token_type = 0x0002;   // publicly verifiable, Blind RSA
+    uint8_t  nonce[32];             // fresh per token; the unlinkable element
+    uint8_t  challenge_digest[32];  // SHA-256 of the TokenChallenge it answers
+    uint8_t  token_key_id[32];      // identifies the issuer key (-&gt; public key)
+    uint8_t  authenticator[Nk];     // Blind RSA signature over the token input
+} Token;
+</pre><a href="#section-4.1-3" class="pilcrow">¶</a>
+</div>
+<p id="section-4.1-4">The token carries no JOSE header, no claims, no issuer URL, no subject, and no expiry of its own: it is opaque bytes whose only verifiable assertion is "a key the verifier trusts signed this, over a challenge the verifier recognizes." Everything semantic — which issuer, what it attests, which agent key it is bound to — comes from the <code>token_key_id</code> (which resolves to a trusted issuer key, <a href="#issuer-keys" class="auto internal xref">Section 5.2</a>) and the <code>TokenChallenge</code> it answers (<a href="#presentation" class="auto internal xref">Section 4.6</a>). There is no version field; a new profile uses a new <code>token_type</code> or a new issuer key namespace.<a href="#section-4.1-4" class="pilcrow">¶</a></p>
+</section>
+</div>
+<div id="assertion">
+<section id="section-4.2">
+        <h3 id="name-what-the-aat-asserts">
+<a href="#section-4.2" class="section-number selfRef">4.2. </a><a href="#name-what-the-aat-asserts" class="section-name selfRef">What the AAT Asserts</a>
+        </h3>
+<p id="section-4.2-1">A valid AAT asserts exactly one thing: <em>a trusted issuer admitted an accountable principal behind this agent at issuance time.</em> "Accountable" is an issuance-time property, not a post-hoc one: the issuer authenticated a real principal who authorized representation (<a href="#identity-linking" class="auto internal xref">Section 4.5.2</a>), applied its eligibility and rate-limiting policy, and answers for the population of agents it admits. It does <strong>not</strong> mean the issuer can later point at a specific redeemed token and name the principal behind it — blind issuance forecloses exactly that (<a href="#token-issuance" class="auto internal xref">Section 4.5.3</a>). Where a verifier needs answerability tied to a specific interaction (a name on an order, a dispute trail), that comes from a consented disclosure, never from the AAT (<a href="#prohibited-content" class="auto internal xref">Section 4.4</a>). The verifier learns no more than this admission bit, plus whatever coarse, non-identity class the issuer may encode via the public-metadata extension (<a href="#public-metadata" class="auto internal xref">Section 4.3</a>).<a href="#section-4.2-1" class="pilcrow">¶</a></p>
+<p id="section-4.2-2">This is the assertion the front door needs: not <em>who</em> is behind the agent, but <em>that the issuer admitted an accountable party behind it</em>. It is the anti-abuse and admission decision, and it is answerable anonymously.<a href="#section-4.2-2" class="pilcrow">¶</a></p>
+</section>
+</div>
+<div id="public-metadata">
+<section id="section-4.3">
+        <h3 id="name-public-metadata">
+<a href="#section-4.3" class="section-number selfRef">4.3. </a><a href="#name-public-metadata" class="section-name selfRef">Public Metadata</a>
+        </h3>
+<p id="section-4.3-1">The base Blind RSA token type (<code>0x0002</code>) has no public-metadata field; metadata is not something a verifier can read off a plain <code>0x0002</code> token. An issuer that needs to convey a coarse, <strong>non-identity</strong> class (for example an assurance tier such as "the principal completed identity verification") MUST do so through the Privacy Pass public-metadata issuance extension (<span>[<a href="#I-D.ietf-privacypass-public-metadata-issuance" class="cite xref">I-D.ietf-privacypass-public-metadata-issuance</a>]</span>), which defines its own token type carrying a <code>metadata</code> field threaded through blind signing; AAP profiles that token type when metadata is used and pins the permitted value set. This is OPTIONAL and an extension to the core.<a href="#section-4.3-1" class="pilcrow">¶</a></p>
+<p id="section-4.3-2">When used, the metadata value MUST be low-cardinality and MUST NOT carry any per-principal value or identity fact: every distinct value a verifier can read partitions the anonymity set, and a high-cardinality or principal-specific value reintroduces the fingerprinting surface the anonymous token exists to remove (<a href="#privacy" class="auto internal xref">Section 9</a>). An issuer SHOULD treat the number of distinct values as a privacy budget and keep it to single digits. An identity predicate (an age threshold, residency) is a fact about a person, not a class, and is prohibited content (<a href="#prohibited-content" class="auto internal xref">Section 4.4</a>).<a href="#section-4.3-2" class="pilcrow">¶</a></p>
+</section>
+</div>
+<div id="prohibited-content">
+<section id="section-4.4">
+        <h3 id="name-prohibited-content">
+<a href="#section-4.4" class="section-number selfRef">4.4. </a><a href="#name-prohibited-content" class="section-name selfRef">Prohibited Content</a>
+        </h3>
+<p id="section-4.4-1">The attestation layer MUST NOT carry, and verifiers MUST NOT expect it to carry:<a href="#section-4.4-1" class="pilcrow">¶</a></p>
+<ul class="normal">
+<li class="normal" id="section-4.4-2.1">
+            <p id="section-4.4-2.1.1">Identity facts: an email address, name, phone number, postal address, birthdate, exact age, identity-verification evidence, or any other attribute of the principal. Disclosure of such facts is the identity claims module's business (<span>[<a href="#AAP-CLAIMS" class="cite xref">AAP-CLAIMS</a>]</span>). A coarse, non-identity assurance class via the public-metadata extension (<a href="#public-metadata" class="auto internal xref">Section 4.3</a>) is the one bounded exception, and is a class, not a fact about a person.<a href="#section-4.4-2.1.1" class="pilcrow">¶</a></p>
+</li>
+          <li class="normal" id="section-4.4-2.2">
+            <p id="section-4.4-2.2.1">Any stable or resolvable handle: a subject, an account identifier, a session identifier, or any value — in the token or in metadata — that is stable across tokens or that the issuer can resolve to a principal. The token's only per-token element is the random <code>nonce</code>, which the issuer never sees in the clear (<a href="#token-issuance" class="auto internal xref">Section 4.5.3</a>) and so cannot resolve.<a href="#section-4.4-2.2.1" class="pilcrow">¶</a></p>
+</li>
+        </ul>
+<p id="section-4.4-3">The structural point makes the prohibition enforceable: a Privacy Pass token has nowhere to put a fact, and its issuance protocol hides the token from the issuer, so the prohibition is a property of the format itself, not a rule a verifier must trust the issuer to follow. Every bit readable across sites is fingerprinting entropy, and a per-session handle the issuer can resolve is the same hazard in another form; the attestation layer carries the one bit the front door needs and not a bit more.<a href="#section-4.4-3" class="pilcrow">¶</a></p>
+</section>
+</div>
+<div id="issuance">
+<section id="section-4.5">
+        <h3 id="name-issuance">
+<a href="#section-4.5" class="section-number selfRef">4.5. </a><a href="#name-issuance" class="section-name selfRef">Issuance</a>
+        </h3>
+<p id="section-4.5-1">Issuance rests on two relationships at different cadences: a one-time, out-of-band platform enrollment (<a href="#platform-enrollment" class="auto internal xref">Section 4.5.1</a>) and a per-principal interactive linking (<a href="#identity-linking" class="auto internal xref">Section 4.5.2</a>). A token issues only where both stand.<a href="#section-4.5-1" class="pilcrow">¶</a></p>
+<div id="platform-enrollment">
+<section id="section-4.5.1">
+          <h4 id="name-platform-enrollment">
+<a href="#section-4.5.1" class="section-number selfRef">4.5.1. </a><a href="#name-platform-enrollment" class="section-name selfRef">Platform Enrollment</a>
+          </h4>
+<p id="section-4.5.1-1">Enrollment is the issuer's standing decision about which operators it will vouch for: the agent platform is typically admitted to a curated allow-list through an out-of-band review (a business agreement and a technical onboarding), not a self-service registration, once per (platform, issuer) pair. A platform MAY enroll with more than one issuer. Enrollment is the precondition for linking: an issuer MUST NOT accept a linking grant (<a href="#identity-linking" class="auto internal xref">Section 4.5.2</a>) for a platform that is not enrolled, and MUST authenticate the platform under its pinned client identity at linking and at issuance (<a href="#token-issuance" class="auto internal xref">Section 4.5.3</a>).<a href="#section-4.5.1-1" class="pilcrow">¶</a></p>
+<p id="section-4.5.1-2">Enrollment pins, for that platform:<a href="#section-4.5.1-2" class="pilcrow">¶</a></p>
+<ul class="normal">
+<li class="normal" id="section-4.5.1-3.1">
+              <p id="section-4.5.1-3.1.1"><strong>An OAuth client identity</strong> under which the platform conducts linking ceremonies (<a href="#identity-linking" class="auto internal xref">Section 4.5.2</a>) and authenticates at issuance (<a href="#token-issuance" class="auto internal xref">Section 4.5.3</a>). Asymmetric client authentication (the <code>private_key_jwt</code> assertion of <span>[<a href="#RFC7523" class="cite xref">RFC7523</a>]</span>) is RECOMMENDED where the platform is a confidential client: no shared secret to leak, and the platform proves itself with a key the issuer pinned. This identity is what lets a principal later grant <code>aap:represent</code> to a named, enrolled platform rather than to a string a requester asserts.<a href="#section-4.5.1-3.1.1" class="pilcrow">¶</a></p>
+</li>
+            <li class="normal" id="section-4.5.1-3.2">
+              <p id="section-4.5.1-3.2.1"><strong>The platform's issuance policy</strong>: issuance rate, batch size, and any issuer-wide token-key epochs it may draw against (<a href="#token-issuance" class="auto internal xref">Section 4.5.3</a>, <a href="#issuer-keys" class="auto internal xref">Section 5.2</a>).<a href="#section-4.5.1-3.2.1" class="pilcrow">¶</a></p>
+</li>
+            <li class="normal" id="section-4.5.1-3.3">
+              <p id="section-4.5.1-3.3.1"><strong>Optional software-identity metadata</strong>, such as the platform's Web Bot Auth key directory (<span>[<a href="#I-D.meunier-web-bot-auth-architecture" class="cite xref">I-D.meunier-web-bot-auth-architecture</a>]</span>). The enrolled OAuth client identity is the issuer-facing platform identity; the verifier-facing software identity is carried separately by Web Bot Auth (<a href="#architecture" class="auto internal xref">Section 2</a>, <a href="#presentation" class="auto internal xref">Section 4.6</a>). An issuer MAY record the directory at enrollment as a consistency check between the two identities; the AAT does not carry it, and keeping platform identity out of the AAT entirely is the rule stated below.<a href="#section-4.5.1-3.3.1" class="pilcrow">¶</a></p>
+</li>
+          </ul>
+<p id="section-4.5.1-4">Enrollment is operator vetting, not attestation delegation. The issuer remains its own Attester (<a href="#trust-model" class="auto internal xref">Section 6</a>) and checks principal-accountability itself at linking; what enrollment adds is the other half of that accountability: issuance is limited to operators the issuer has vetted and can hold to a contract. The principal's authentication (<a href="#identity-linking" class="auto internal xref">Section 4.5.2</a>) and the platform's vetting together back the one thing a verifier reads off an AAT: an accountable principal stands behind this agent.<a href="#section-4.5.1-4" class="pilcrow">¶</a></p>
+<p id="section-4.5.1-5">Platform identity belongs to the agent-software identity layer, where Web Bot Auth identifies which software or operator is making the request (<a href="#architecture" class="auto internal xref">Section 2</a>, <a href="#presentation" class="auto internal xref">Section 4.6</a>). The AAT MUST NOT also encode it: the issuer MUST NOT key tokens per platform, MUST NOT assign token keys or epochs in a way that distinguishes platforms at redemption (<a href="#issuer-keys" class="auto internal xref">Section 5.2</a>), and MUST NOT encode a platform identifier in public metadata (<a href="#public-metadata" class="auto internal xref">Section 4.3</a>). Any of these would make platform identity a property of the anonymous credential, duplicating the Web Bot Auth layer and partitioning the token's redemption anonymity set (Sections 6.1 and 6.2 of <span>[<a href="#RFC9576" class="cite xref">RFC9576</a>]</span>; <a href="#privacy" class="auto internal xref">Section 9</a>). Platform identity lives in enrollment, issuance authorization, and Web Bot Auth; blind signing (<a href="#token-issuance" class="auto internal xref">Section 4.5.3</a>) collapses it out of the AAT before redemption.<a href="#section-4.5.1-5" class="pilcrow">¶</a></p>
+<p id="section-4.5.1-6">De-listing a platform ends issuance for all of its agents at once, the coarse companion to a principal revoking a single grant (<a href="#identity-linking" class="auto internal xref">Section 4.5.2</a>). It does not reach AATs already pooled, which, being unlinkable, the issuer cannot single out; token-key rotation (<a href="#issuer-keys" class="auto internal xref">Section 5.2</a>, <a href="#session-establishment" class="auto internal xref">Section 4.6.2</a>) bounds that residue, as it does after an individual revocation.<a href="#section-4.5.1-6" class="pilcrow">¶</a></p>
+</section>
+</div>
+<div id="identity-linking">
+<section id="section-4.5.2">
+          <h4 id="name-identity-linking">
+<a href="#section-4.5.2" class="section-number selfRef">4.5.2. </a><a href="#name-identity-linking" class="section-name selfRef">Identity Linking</a>
+          </h4>
+<p id="section-4.5.2-1">Before any AAT is issued for a principal, the principal explicitly links an enrolled platform (<a href="#platform-enrollment" class="auto internal xref">Section 4.5.1</a>) to the issuer: an OAuth grant carrying a dedicated AAP scope (<code>aap:represent</code>, "agents of this platform may represent me"), obtained at the issuer's own OAuth authorization server and bound to the platform's enrolled client identity. The grant binds a specific principal to a specific enrolled platform, so the issuer shows that platform's verified identity at consent rather than a name the requester asserts. For CLI and headless agents, the Device Authorization Grant (<span>[<a href="#RFC8628" class="cite xref">RFC8628</a>]</span>) is the natural ceremony; for app-embedded agents, the authorization code flow.<a href="#section-4.5.2-1" class="pilcrow">¶</a></p>
+<p id="section-4.5.2-2">The linking ceremony MUST make plain that what is being granted is ongoing representation on the internet, not a one-time login, and that the platform's agents will obtain attestation tokens under it without further interaction. A principal MAY link more than one issuer and MAY revoke the grant at any time, which ends issuance under it immediately; de-listing the platform (<a href="#platform-enrollment" class="auto internal xref">Section 4.5.1</a>) ends issuance for every principal who linked it.<a href="#section-4.5.2-2" class="pilcrow">¶</a></p>
+<p id="section-4.5.2-3">Linking is the only interactive ceremony this core asks of the principal. Once the grant stands, agents obtain AATs freely under it: an AAT carries no facts and names no one (<a href="#prohibited-content" class="auto internal xref">Section 4.4</a>), so there is nothing to approve per token.<a href="#section-4.5.2-3" class="pilcrow">¶</a></p>
+<p id="section-4.5.2-4">Linking is also the anchor for modules. A module that needs a standing, per-principal authorization — the identity claims module captures the principal's disclosure policy here (<span>[<a href="#AAP-CLAIMS" class="cite xref">AAP-CLAIMS</a>]</span>) — attaches its capture to this ceremony, because the anonymous front door offers no later handle to attach one to. Such amendments are defined by the module, not by this document.<a href="#section-4.5.2-4" class="pilcrow">¶</a></p>
+</section>
+</div>
+<div id="token-issuance">
+<section id="section-4.5.3">
+          <h4 id="name-token-issuance">
+<a href="#section-4.5.3" class="section-number selfRef">4.5.3. </a><a href="#name-token-issuance" class="section-name selfRef">Token Issuance</a>
+          </h4>
+<p id="section-4.5.3-1">The agent obtains AATs from the issuer's issuance endpoint using a Privacy Pass issuance protocol (<span>[<a href="#RFC9578" class="cite xref">RFC9578</a>]</span>, Blind RSA), authenticating with the access token of the linking grant. Two properties of blind issuance are load-bearing here:<a href="#section-4.5.3-1" class="pilcrow">¶</a></p>
+<ul class="normal">
+<li class="normal" id="section-4.5.3-2.1">
+              <p id="section-4.5.3-2.1.1"><strong>The issuer signs blindly.</strong> The agent blinds its token request before sending it; the issuer signs the blinded message and never sees the finished token. Even though the agent authenticates as a known principal at issuance, the issuer cannot recognize the resulting token when it is later redeemed: issuance and redemption are unlinkable (<a href="#privacy" class="auto internal xref">Section 9</a>). What the issuer learns at issuance is only that this principal obtained tokens, at this time — never where they are spent.<a href="#section-4.5.3-2.1.1" class="pilcrow">¶</a></p>
+</li>
+            <li class="normal" id="section-4.5.3-2.2">
+              <p id="section-4.5.3-2.2.1"><strong>Tokens are pooled against a stable challenge.</strong> The profile fixes a <em>stable</em> <code>TokenChallenge</code> (fixed <code>issuer_name</code>, empty <code>origin_info</code>) that the agent pools tokens against ahead of contact and that a verifier advertises at the door (<a href="#presentation" class="auto internal xref">Section 4.6</a>), so a whole pool of tokens shares one <code>challenge_digest</code> and can be redeemed against any verifier that accepts this issuer; origin-driven Privacy Pass, by contrast, supplies a fresh <code>TokenChallenge</code> per redemption. Freshness and origin-binding are therefore <strong>not</strong> provided by the Privacy Pass layer in the pooled mode; they come from the Web Bot Auth signature on each request (<a href="#presentation" class="auto internal xref">Section 4.6</a>) and the verifier's double-spend cache (<a href="#verification" class="auto internal xref">Section 4.7</a>). Whether the agent additionally commits its key into the challenge's <code>redemption_context</code> to make tokens non-transferable is the binding choice analyzed in <a href="#token-binding" class="auto internal xref">Section 4.5.4</a>.<a href="#section-4.5.3-2.2.1" class="pilcrow">¶</a></p>
+</li>
+          </ul>
+<p id="section-4.5.3-3">To avoid an issuance round trip on the request path and to break timing correlation between issuance and redemption, the agent SHOULD obtain AATs in batches (a token pool) ahead of use and draw from the pool to redeem. The issuer applies its own per-principal issuance policy (rate, batch size) under the linking grant. Because tokens are single-use (<a href="#verification" class="auto internal xref">Section 4.7</a>), the pool is consumable inventory; the agent refills it as it depletes. Generic Token Batch Issuance (Section 6 of <span>[<a href="#I-D.ietf-privacypass-batched-tokens" class="cite xref">I-D.ietf-privacypass-batched-tokens</a>]</span>) fills a pool in one exchange and carries the Blind RSA token type that AAP mandates (<a href="#format" class="auto internal xref">Section 4.1</a>); the amortized variant (Section 5) does not support Blind RSA and does not apply. An issuer MAY instead serve the pool through repeated single-token issuance (<span>[<a href="#RFC9578" class="cite xref">RFC9578</a>]</span>).<a href="#section-4.5.3-3" class="pilcrow">¶</a></p>
+<p id="section-4.5.3-4">Blind issuance protects the principal only while the blinding stays with the agent. The following hold however issuance traffic reaches the issuer, whether the agent calls the issuance endpoint directly or its platform or another intermediary relays for it:<a href="#section-4.5.3-4" class="pilcrow">¶</a></p>
+<ul class="normal">
+<li class="normal" id="section-4.5.3-5.1">
+              <p id="section-4.5.3-5.1.1">The agent that will redeem a token MUST generate the token request and perform the blinding and unblinding itself. Only blinded token requests and blinded signatures leave the agent; finished tokens exist only at the agent.<a href="#section-4.5.3-5.1.1" class="pilcrow">¶</a></p>
+</li>
+            <li class="normal" id="section-4.5.3-5.2">
+              <p id="section-4.5.3-5.2.1">An agent platform or other intermediary that relays issuance traffic MUST NOT require the agent to reveal unblinded token material (token nonces or finished tokens) as a condition of relay. A relay that holds unblinded material can recognize the token at redemption, which is the linkage blind issuance exists to prevent.<a href="#section-4.5.3-5.2.1" class="pilcrow">¶</a></p>
+</li>
+            <li class="normal" id="section-4.5.3-5.3">
+              <p id="section-4.5.3-5.3.1">Pooled tokens belong to the agent that obtained them. An agent platform MUST NOT move tokens between agent instances; the pool's custody boundary follows the agent key's (<a href="#token-binding" class="auto internal xref">Section 4.5.4</a>).<a href="#section-4.5.3-5.3.1" class="pilcrow">¶</a></p>
+</li>
+          </ul>
+<span id="name-the-platform-is-enrolled-on"></span><div id="fig-token-issuance">
+<figure id="figure-1">
+            <div id="section-4.5.3-6.1">
+              <div class="alignCenter art-svg artwork" id="section-4.5.3-6.1.1">
+<svg xmlns="http://www.w3.org/2000/svg" version="1.1" height="496" width="560" viewBox="0 0 560 496" class="diagram" text-anchor="middle" font-family="monospace" font-size="13px" stroke-linecap="round">
+                  <path d="M 56,96 L 56,112" fill="none" stroke="black"></path>
+                  <path d="M 56,144 L 56,192" fill="none" stroke="black"></path>
+                  <path d="M 56,224 L 56,272" fill="none" stroke="black"></path>
+                  <path d="M 200,96 L 200,112" fill="none" stroke="black"></path>
+                  <path d="M 200,144 L 200,192" fill="none" stroke="black"></path>
+                  <path d="M 200,224 L 200,272" fill="none" stroke="black"></path>
+                  <path d="M 344,96 L 344,112" fill="none" stroke="black"></path>
+                  <path d="M 344,144 L 344,192" fill="none" stroke="black"></path>
+                  <path d="M 344,224 L 344,272" fill="none" stroke="black"></path>
+                  <path d="M 480,96 L 480,112" fill="none" stroke="black"></path>
+                  <path d="M 480,144 L 480,192" fill="none" stroke="black"></path>
+                  <path d="M 480,224 L 480,272" fill="none" stroke="black"></path>
+                  <path d="M 544,240 L 544,256" fill="none" stroke="black"></path>
+                  <path d="M 208,96 L 224,96" fill="none" stroke="black"></path>
+                  <path d="M 240,96 L 472,96" fill="none" stroke="black"></path>
+                  <path d="M 208,112 Q 210,108.8 212,112 Q 214,115.2 216,112 Q 218,108.8 220,112 Q 222,115.2 224,112 Q 226,108.8 228,112 Q 230,115.2 232,112 Q 234,108.8 236,112 Q 238,115.2 240,112 Q 242,108.8 244,112 Q 246,115.2 248,112 Q 250,108.8 252,112 Q 254,115.2 256,112 Q 258,108.8 260,112 Q 262,115.2 264,112 Q 266,108.8 268,112 Q 270,115.2 272,112 Q 274,108.8 276,112 Q 278,115.2 280,112 Q 282,108.8 284,112 Q 286,115.2 288,112 Q 290,108.8 292,112 Q 294,115.2 296,112 Q 298,108.8 300,112 Q 302,115.2 304,112 Q 306,108.8 308,112 Q 310,115.2 312,112 Q 314,108.8 316,112 Q 318,115.2 320,112 Q 322,108.8 324,112 Q 326,115.2 328,112 Q 330,108.8 332,112 Q 334,115.2 336,112 Q 338,108.8 340,112 Q 342,115.2 344,112 Q 346,108.8 348,112 Q 350,115.2 352,112 Q 354,108.8 356,112 Q 358,115.2 360,112 Q 362,108.8 364,112 Q 366,115.2 368,112" fill="none" stroke="black"></path>
+                  <path d="M 384,112 Q 386,108.8 388,112 Q 390,115.2 392,112 Q 394,108.8 396,112 Q 398,115.2 400,112 Q 402,108.8 404,112 Q 406,115.2 408,112 Q 410,108.8 412,112 Q 414,115.2 416,112 Q 418,108.8 420,112 Q 422,115.2 424,112 Q 426,108.8 428,112 Q 430,115.2 432,112 Q 434,108.8 436,112 Q 438,115.2 440,112 Q 442,108.8 444,112 Q 446,115.2 448,112 Q 450,108.8 452,112 Q 454,115.2 456,112 Q 458,108.8 460,112 Q 462,115.2 464,112 Q 466,108.8 468,112 Q 470,115.2 472,112" fill="none" stroke="black"></path>
+                  <path d="M 208,144 L 224,144" fill="none" stroke="black"></path>
+                  <path d="M 240,144 L 472,144" fill="none" stroke="black"></path>
+                  <path d="M 64,160 L 368,160" fill="none" stroke="black"></path>
+                  <path d="M 384,160 L 472,160" fill="none" stroke="black"></path>
+                  <path d="M 64,176 L 80,176" fill="none" stroke="black"></path>
+                  <path d="M 96,176 L 472,176" fill="none" stroke="black"></path>
+                  <path d="M 208,192 Q 210,188.8 212,192 Q 214,195.2 216,192 Q 218,188.8 220,192 Q 222,195.2 224,192 Q 226,188.8 228,192 Q 230,195.2 232,192 Q 234,188.8 236,192 Q 238,195.2 240,192 Q 242,188.8 244,192 Q 246,195.2 248,192 Q 250,188.8 252,192 Q 254,195.2 256,192 Q 258,188.8 260,192 Q 262,195.2 264,192 Q 266,188.8 268,192 Q 270,195.2 272,192 Q 274,188.8 276,192 Q 278,195.2 280,192 Q 282,188.8 284,192 Q 286,195.2 288,192 Q 290,188.8 292,192 Q 294,195.2 296,192 Q 298,188.8 300,192 Q 302,195.2 304,192 Q 306,188.8 308,192 Q 310,195.2 312,192 Q 314,188.8 316,192 Q 318,195.2 320,192 Q 322,188.8 324,192 Q 326,195.2 328,192 Q 330,188.8 332,192 Q 334,195.2 336,192 Q 338,188.8 340,192 Q 342,195.2 344,192 Q 346,188.8 348,192 Q 350,195.2 352,192 Q 354,188.8 356,192 Q 358,195.2 360,192 Q 362,188.8 364,192 Q 366,195.2 368,192" fill="none" stroke="black"></path>
+                  <path d="M 384,192 Q 386,188.8 388,192 Q 390,195.2 392,192 Q 394,188.8 396,192 Q 398,195.2 400,192 Q 402,188.8 404,192 Q 406,195.2 408,192 Q 410,188.8 412,192 Q 414,195.2 416,192 Q 418,188.8 420,192 Q 422,195.2 424,192 Q 426,188.8 428,192 Q 430,195.2 432,192 Q 434,188.8 436,192 Q 438,195.2 440,192 Q 442,188.8 444,192 Q 446,195.2 448,192 Q 450,188.8 452,192 Q 454,195.2 456,192 Q 458,188.8 460,192 Q 462,195.2 464,192 Q 466,188.8 468,192 Q 470,195.2 472,192" fill="none" stroke="black"></path>
+                  <path d="M 352,224 L 368,224" fill="none" stroke="black"></path>
+                  <path d="M 384,224 L 472,224" fill="none" stroke="black"></path>
+                  <path d="M 488,240 L 504,240" fill="none" stroke="black"></path>
+                  <path d="M 520,240 L 544,240" fill="none" stroke="black"></path>
+                  <path d="M 488,256 L 544,256" fill="none" stroke="black"></path>
+                  <path d="M 352,272 Q 354,268.8 356,272 Q 358,275.2 360,272 Q 362,268.8 364,272 Q 366,275.2 368,272" fill="none" stroke="black"></path>
+                  <path d="M 384,272 Q 386,268.8 388,272 Q 390,275.2 392,272 Q 394,268.8 396,272 Q 398,275.2 400,272 Q 402,268.8 404,272 Q 406,275.2 408,272 Q 410,268.8 412,272 Q 414,275.2 416,272 Q 418,268.8 420,272 Q 422,275.2 424,272 Q 426,268.8 428,272 Q 430,275.2 432,272 Q 434,268.8 436,272 Q 438,275.2 440,272 Q 442,268.8 444,272 Q 446,275.2 448,272 Q 450,268.8 452,272 Q 454,275.2 456,272 Q 458,268.8 460,272 Q 462,275.2 464,272 Q 466,268.8 468,272 Q 470,275.2 472,272" fill="none" stroke="black"></path>
+                  <path d="M 72,304 L 104,304" fill="none" stroke="black"></path>
+                  <path d="M 192,304 Q 194,300.8 196,304 Q 198,307.2 200,304 Q 202,300.8 204,304 Q 206,307.2 208,304 Q 210,300.8 212,304 Q 214,307.2 216,304 Q 218,300.8 220,304 Q 222,307.2 224,304" fill="none" stroke="black"></path>
+                  <path d="M 320,304 L 344,304" fill="none" stroke="black"></path>
+                  <polygon class="arrowhead" points="496,256 484,250.4 484,261.6" fill="black" transform="rotate(180,488,256)"></polygon>
+                  <polygon class="arrowhead" points="480,224 468,218.4 468,229.6" fill="black" transform="rotate(0,472,224)"></polygon>
+                  <polygon class="arrowhead" points="480,176 468,170.4 468,181.6" fill="black" transform="rotate(0,472,176)"></polygon>
+                  <polygon class="arrowhead" points="480,144 468,138.4 468,149.6" fill="black" transform="rotate(0,472,144)"></polygon>
+                  <polygon class="arrowhead" points="480,96 468,90.4 468,101.6" fill="black" transform="rotate(0,472,96)"></polygon>
+                  <polygon class="arrowhead" points="360,272 348,266.4 348,277.6" fill="black" transform="rotate(180,352,272)"></polygon>
+                  <polygon class="arrowhead" points="232,304 220,298.4 220,309.6" fill="black" transform="rotate(0,224,304)"></polygon>
+                  <polygon class="arrowhead" points="216,192 204,186.4 204,197.6" fill="black" transform="rotate(180,208,192)"></polygon>
+                  <polygon class="arrowhead" points="216,112 204,106.4 204,117.6" fill="black" transform="rotate(180,208,112)"></polygon>
+                  <polygon class="arrowhead" points="112,304 100,298.4 100,309.6" fill="black" transform="rotate(0,104,304)"></polygon>
+                  <polygon class="arrowhead" points="72,160 60,154.4 60,165.6" fill="black" transform="rotate(180,64,160)"></polygon>
+                  <g class="text">
+                    <text x="56" y="36">Principal</text>
+                    <text x="160" y="36">Agent</text>
+                    <text x="220" y="36">Platform</text>
+                    <text x="344" y="36">Agent</text>
+                    <text x="452" y="36">Issuer</text>
+                    <text x="504" y="36">(IDP)</text>
+                    <text x="56" y="52">P</text>
+                    <text x="196" y="52">AP</text>
+                    <text x="344" y="52">A</text>
+                    <text x="480" y="52">I</text>
+                    <text x="56" y="68">|</text>
+                    <text x="200" y="68">|</text>
+                    <text x="344" y="68">|</text>
+                    <text x="480" y="68">|</text>
+                    <text x="8" y="84">[</text>
+                    <text x="60" y="84">Note</text>
+                    <text x="100" y="84">over</text>
+                    <text x="144" y="84">AP,I:</text>
+                    <text x="188" y="84">once</text>
+                    <text x="224" y="84">per</text>
+                    <text x="280" y="84">platform:</text>
+                    <text x="364" y="84">enrollment</text>
+                    <text x="428" y="84">(out</text>
+                    <text x="460" y="84">of</text>
+                    <text x="496" y="84">band)</text>
+                    <text x="552" y="84">]</text>
+                    <text x="232" y="100">1</text>
+                    <text x="376" y="116">2</text>
+                    <text x="8" y="132">[</text>
+                    <text x="68" y="132">Note</text>
+                    <text x="108" y="132">over</text>
+                    <text x="148" y="132">P,I:</text>
+                    <text x="188" y="132">once</text>
+                    <text x="224" y="132">per</text>
+                    <text x="284" y="132">principal:</text>
+                    <text x="364" y="132">identity</text>
+                    <text x="432" y="132">linking</text>
+                    <text x="552" y="132">]</text>
+                    <text x="232" y="148">3</text>
+                    <text x="376" y="164">4</text>
+                    <text x="88" y="180">5</text>
+                    <text x="376" y="196">6</text>
+                    <text x="8" y="212">[</text>
+                    <text x="36" y="212">Note</text>
+                    <text x="76" y="212">over</text>
+                    <text x="116" y="212">A,I:</text>
+                    <text x="160" y="212">ahead</text>
+                    <text x="196" y="212">of</text>
+                    <text x="228" y="212">use:</text>
+                    <text x="268" y="212">fill</text>
+                    <text x="304" y="212">the</text>
+                    <text x="344" y="212">token</text>
+                    <text x="388" y="212">pool</text>
+                    <text x="436" y="212">(blind</text>
+                    <text x="504" y="212">issuance)</text>
+                    <text x="552" y="212">]</text>
+                    <text x="376" y="228">7</text>
+                    <text x="512" y="244">8</text>
+                    <text x="376" y="276">9</text>
+                    <text x="32" y="308">Legend:</text>
+                    <text x="148" y="308">message;</text>
+                    <text x="272" y="308">response;</text>
+                    <text x="392" y="308">self-call</text>
+                    <text x="40" y="340">Messages:</text>
+                    <text x="16" y="356">(1)</text>
+                    <text x="44" y="356">AP</text>
+                    <text x="68" y="356">-&gt;</text>
+                    <text x="92" y="356">I:</text>
+                    <text x="132" y="356">enroll</text>
+                    <text x="176" y="356">out</text>
+                    <text x="204" y="356">of</text>
+                    <text x="236" y="356">band</text>
+                    <text x="308" y="356">(allow-list;</text>
+                    <text x="376" y="356">pin</text>
+                    <text x="420" y="356">client</text>
+                    <text x="488" y="356">identity)</text>
+                    <text x="16" y="372">(2)</text>
+                    <text x="40" y="372">I</text>
+                    <text x="60" y="372">~&gt;</text>
+                    <text x="88" y="372">AP:</text>
+                    <text x="140" y="372">enrolled</text>
+                    <text x="204" y="372">client</text>
+                    <text x="268" y="372">identity</text>
+                    <text x="16" y="388">(3)</text>
+                    <text x="44" y="388">AP</text>
+                    <text x="68" y="388">-&gt;</text>
+                    <text x="92" y="388">I:</text>
+                    <text x="136" y="388">request</text>
+                    <text x="188" y="388">link</text>
+                    <text x="240" y="388">(OAuth,</text>
+                    <text x="328" y="388">aap:represent</text>
+                    <text x="412" y="388">scope)</text>
+                    <text x="16" y="404">(4)</text>
+                    <text x="40" y="404">I</text>
+                    <text x="60" y="404">-&gt;</text>
+                    <text x="84" y="404">P:</text>
+                    <text x="128" y="404">approve</text>
+                    <text x="224" y="404">representation?</text>
+                    <text x="16" y="420">(5)</text>
+                    <text x="40" y="420">P</text>
+                    <text x="60" y="420">-&gt;</text>
+                    <text x="84" y="420">I:</text>
+                    <text x="128" y="420">approve</text>
+                    <text x="16" y="436">(6)</text>
+                    <text x="40" y="436">I</text>
+                    <text x="60" y="436">~&gt;</text>
+                    <text x="88" y="436">AP:</text>
+                    <text x="136" y="436">linking</text>
+                    <text x="192" y="436">grant</text>
+                    <text x="16" y="452">(7)</text>
+                    <text x="40" y="452">A</text>
+                    <text x="60" y="452">-&gt;</text>
+                    <text x="84" y="452">I:</text>
+                    <text x="128" y="452">blinded</text>
+                    <text x="184" y="452">token</text>
+                    <text x="244" y="452">requests</text>
+                    <text x="308" y="452">(under</text>
+                    <text x="352" y="452">the</text>
+                    <text x="396" y="452">grant)</text>
+                    <text x="16" y="468">(8)</text>
+                    <text x="40" y="468">I</text>
+                    <text x="60" y="468">-&gt;</text>
+                    <text x="84" y="468">I:</text>
+                    <text x="148" y="468">authenticate</text>
+                    <text x="244" y="468">principal;</text>
+                    <text x="308" y="468">sign</text>
+                    <text x="360" y="468">blindly</text>
+                    <text x="420" y="468">(never</text>
+                    <text x="468" y="468">sees</text>
+                    <text x="520" y="468">tokens)</text>
+                    <text x="16" y="484">(9)</text>
+                    <text x="40" y="484">I</text>
+                    <text x="60" y="484">~&gt;</text>
+                    <text x="84" y="484">A:</text>
+                    <text x="128" y="484">blinded</text>
+                    <text x="204" y="484">signatures</text>
+                    <text x="260" y="484">-&gt;</text>
+                    <text x="296" y="484">agent</text>
+                    <text x="356" y="484">unblinds</text>
+                    <text x="412" y="484">into</text>
+                    <text x="440" y="484">a</text>
+                    <text x="468" y="484">pool</text>
+                    <text x="500" y="484">of</text>
+                    <text x="532" y="484">AATs</text>
+                  </g>
+                </svg><a href="#section-4.5.3-6.1.1" class="pilcrow">¶</a>
+</div>
+</div>
+<figcaption><a href="#figure-1" class="selfRef">Figure 1</a>:
+<a href="#name-the-platform-is-enrolled-on" class="selfRef">The platform is enrolled once, out of band; each principal then links it; the agent fills a pool of anonymous AATs by blind issuance. The issuer authenticates the principal at issuance but cannot link any token to its redemption.</a>
+            </figcaption></figure>
+</div>
+</section>
+</div>
+<div id="token-binding">
+<section id="section-4.5.4">
+          <h4 id="name-token-binding-and-theft-res">
+<a href="#section-4.5.4" class="section-number selfRef">4.5.4. </a><a href="#name-token-binding-and-theft-res" class="section-name selfRef">Token Binding and Theft Resistance</a>
+          </h4>
+<p id="section-4.5.4-1">A redeemed Privacy Pass token is a bearer artifact: the question is whether a captured token can be replayed, and by whom. AAP defines two modes; a deployment chooses between them per the trade-offs below.<a href="#section-4.5.4-1" class="pilcrow">¶</a></p>
+<p id="section-4.5.4-2"><strong>Bearer mode (RECOMMENDED, the default Privacy Pass posture).</strong> The <code>redemption_context</code> is empty, so tokens are poolable and genuinely unlinkable (<a href="#privacy" class="auto internal xref">Section 9</a>). Theft resistance rests on the same three things deployed Privacy Pass relies on: tokens are single-use, so a token spent once is rejected on re-presentation at that verifier (<a href="#verification" class="auto internal xref">Section 4.7</a>); issuance is rate-limited per principal under the linking grant (<a href="#token-issuance" class="auto internal xref">Section 4.5.3</a>); and the Web Bot Auth signature (<a href="#presentation" class="auto internal xref">Section 4.6</a>) covers the <code>Authorization</code> header, so a party that observes a token in transit cannot splice it into a different request. What the empty <code>redemption_context</code> does not do is bind the token to the presenter's key: a captured token can be replayed by re-signing a fresh request under a different key, because a bearer AAT proves "an accountable principal was admitted," not "this presenter is that principal." Whether that replay is open to an arbitrary party or only to a recognized agent is a verifier-policy choice: a verifier that requires the signing key to resolve to an accepted agent through the Web Bot Auth directory (<a href="#architecture" class="auto internal xref">Section 2</a>) forces a thief to sign under a key it accepts — so the replaying party is itself an accountable, identifiable operator — whereas a verifier that admits any valid signature leaves the token replayable by anyone who captures it. Either way single-use bounds theft to one redemption per stolen token per verifier and issuance rate limits bound volume theft of a pool; a deployment that needs the token itself to be non-transferable uses the key-bound mode below. For an admission gate this is the standard and sufficient posture.<a href="#section-4.5.4-2" class="pilcrow">¶</a></p>
+<p id="section-4.5.4-3"><strong>Key-bound mode (OPTIONAL, non-transferable tokens).</strong> A deployment that needs a token to be unusable by anyone but the agent that obtained it MAY commit the agent key into the challenge: set <code>redemption_context</code> (32 bytes) to the raw <span>[<a href="#RFC7638" class="cite xref">RFC7638</a>]</span> SHA-256 thumbprint of the agent's Web Bot Auth key — the thumbprint is itself 32 bytes; do not use the longer base64url <code>kid</code> text. All of an agent's pooled tokens then share one <code>challenge_digest</code> derived from its own key, and at redemption the verifier reconstructs the expected <code>TokenChallenge</code> from the thumbprint of the key that signed the request, rejecting a token whose <code>challenge_digest</code> does not match (<a href="#verification" class="auto internal xref">Section 4.7</a>). A stolen token is then inert to any party that cannot sign under that key. The key-bound AAT needs no separate proof artifact: possession is demonstrated by the Web Bot Auth signature already on the request (<a href="#presentation" class="auto internal xref">Section 4.6</a>), where DPoP (<span>[<a href="#RFC9449" class="cite xref">RFC9449</a>]</span>) would add a per-request proof JWT.<a href="#section-4.5.4-3" class="pilcrow">¶</a></p>
+<p id="section-4.5.4-4">The agent SHOULD use a distinct agent key per origin it visits, so the key itself is not a cross-origin correlator.<a href="#section-4.5.4-4" class="pilcrow">¶</a></p>
+</section>
+</div>
+</section>
+</div>
+<div id="presentation">
+<section id="section-4.6">
+        <h3 id="name-presentation">
+<a href="#section-4.6" class="section-number selfRef">4.6. </a><a href="#name-presentation" class="section-name selfRef">Presentation</a>
+        </h3>
+<p id="section-4.6-1">AAP is <strong>challenge-driven</strong>: a verifier that requires an AAT MUST request it by responding to the agent's request with a <code>401</code> carrying a Privacy Pass challenge (Section 2.1 of <span>[<a href="#RFC9577" class="cite xref">RFC9577</a>]</span>), and the agent answers from its pool. An agent is not expected to volunteer an AAT unprompted, though it MAY as an optimization (<a href="#proactive-presentation" class="auto internal xref">Section 4.6.1</a>).<a href="#section-4.6-1" class="pilcrow">¶</a></p>
+<div class="alignLeft art-text artwork" id="section-4.6-2">
+<pre>
+HTTP/1.1 401 Unauthorized
+WWW-Authenticate: PrivateToken challenge=&lt;base64url stable TokenChallenge&gt;, \
+  token-key=&lt;base64url issuer public key&gt;, \
+  max-age=300
+</pre><a href="#section-4.6-2" class="pilcrow">¶</a>
+</div>
+<p id="section-4.6-3">The challenge also tells the agent which issuers the verifier trusts — a verifier that accepts more than one advertises a <code>PrivateToken</code> challenge per issuer in the <code>WWW-Authenticate</code> header (Section 2.1.2.1 of <span>[<a href="#RFC9577" class="cite xref">RFC9577</a>]</span>), each with that issuer's stable <code>TokenChallenge</code> and key. The agent can then answer with a token it already holds from an accepted issuer, or prompt its principal to link one if it holds none (<a href="#identity-linking" class="auto internal xref">Section 4.5.2</a>).<a href="#section-4.6-3" class="pilcrow">¶</a></p>
+<p id="section-4.6-4">The same <code>401</code> can also carry the service's conventional authentication challenges — an OAuth <code>Bearer</code> or <code>DPoP</code> challenge — beside these; how the identified and anonymous postures coexist, and how the agent chooses between them, is discussed in <a href="#authn-coexistence" class="auto internal xref">Section 8</a>.<a href="#section-4.6-4" class="pilcrow">¶</a></p>
+<p id="section-4.6-5">AAP deviates from origin-driven Privacy Pass in what the challenge may contain, not in who initiates it. The advertised <code>TokenChallenge</code> MUST use the <strong>stable</strong> parameters this profile pools against (fixed <code>issuer_name</code>, empty <code>origin_info</code>, and the <code>redemption_context</code> of the binding mode in force, <a href="#token-binding" class="auto internal xref">Section 4.5.4</a>), and a verifier MUST NOT vary it per request — in particular, MUST NOT set a fresh per-request <code>redemption_context</code>, the field origin-driven Privacy Pass uses to carry challenge freshness. A fresh per-request challenge would invalidate every pooled token and force a synchronous issuance round trip at the door; the stable challenge is what lets the agent answer from a pre-provisioned pool. Because the challenge therefore carries no freshness, replay defense and origin-binding come from the Web Bot Auth signature on the agent's response (<a href="#verification" class="auto internal xref">Section 4.7</a>) and the verifier's double-spend cache, not from the Privacy Pass layer.<a href="#section-4.6-5" class="pilcrow">¶</a></p>
+<p id="section-4.6-6">The agent answers the challenge by redeeming a pooled token in the <code>Authorization</code> header per RFC 9577, accompanied by a Web Bot Auth HTTP Message Signature (<span>[<a href="#RFC9421" class="cite xref">RFC9421</a>]</span>, <span>[<a href="#I-D.meunier-web-bot-auth-architecture" class="cite xref">I-D.meunier-web-bot-auth-architecture</a>]</span>) made with its agent key:<a href="#section-4.6-6" class="pilcrow">¶</a></p>
+<span id="name-an-agents-response-to-a-ver"></span><div id="fig-aat-presentation">
+<figure id="figure-2">
+          <div class="alignLeft art-text artwork" id="section-4.6-7.1">
+<pre>
+POST /checkout HTTP/1.1
+Host: merchant.example
+Authorization: PrivateToken token=&lt;base64url Token&gt;
+Content-Type: application/json
+Content-Digest: sha-256=:X48E9qOokqqrvdts8nOJRJN3OWDUoyWxBf7kbu9DBPE=:
+Signature-Input: agent=("@method" "@authority" "@path" "authorization" \
+  "content-digest");created=1715400030;expires=1715400090; \
+  keyid="agent_kid_b64url...";tag="web-bot-auth"
+Signature: agent=:&lt;signature by the agent key&gt;:
+
+{"item": "sku-12345", "quantity": 1}
+</pre>
+</div>
+<figcaption><a href="#figure-2" class="selfRef">Figure 2</a>:
+<a href="#name-an-agents-response-to-a-ver" class="selfRef">An agent's response to a verifier's challenge. A redeemed AAT presented with a Web Bot Auth signature: the token attests an accountable principal is behind the agent; the signature proves the presenter holds the agent key, confines the request to this method, host, and path, and (in the key-bound mode) matches the key the token commits to.</a>
+          </figcaption></figure>
+</div>
+<p id="section-4.6-8">The profile:<a href="#section-4.6-8" class="pilcrow">¶</a></p>
+<ul class="normal">
+<li class="normal" id="section-4.6-9.1">
+            <p id="section-4.6-9.1.1">The signature MUST cover at least <code>@method</code>, <code>@authority</code>, <code>@path</code>, the <code>Authorization</code> header (so the token cannot be lifted under a valid signature), and, when there is a body, its <code>Content-Digest</code> (<span>[<a href="#RFC9530" class="cite xref">RFC9530</a>]</span>). Covering <code>@authority</code> confines a captured request to the host it was sent to. The signature carries <code>created</code>/<code>expires</code> bounding a short window (RECOMMENDED at most 60 seconds), a <code>keyid</code> equal to the <span>[<a href="#RFC7638" class="cite xref">RFC7638</a>]</span> thumbprint of the agent key, and the tag <code>web-bot-auth</code>.<a href="#section-4.6-9.1.1" class="pilcrow">¶</a></p>
+</li>
+          <li class="normal" id="section-4.6-9.2">
+            <p id="section-4.6-9.2.1">In the key-bound mode (<a href="#token-binding" class="auto internal xref">Section 4.5.4</a>), the <code>keyid</code> agent key MUST be the key the token's <code>redemption_context</code> commits to, and a verifier MUST reject the pair if the token's <code>challenge_digest</code> does not reconstruct from it (<a href="#verification" class="auto internal xref">Section 4.7</a>). In the bearer mode there is no such commitment; the signature's coverage of the <code>Authorization</code> header still prevents an on-path party from lifting the token into a different signed request, and single-use plus the double-spend cache bound replay.<a href="#section-4.6-9.2.1" class="pilcrow">¶</a></p>
+</li>
+          <li class="normal" id="section-4.6-9.3">
+            <p id="section-4.6-9.3.1">Because the Privacy Pass layer supplies no freshness in this mode, the signature's short <code>created</code>/<code>expires</code> window and the verifier's double-spend cache (<a href="#verification" class="auto internal xref">Section 4.7</a>) are the replay defense; a verifier MAY additionally require a <code>nonce</code> signature parameter via its challenge. The agent SHOULD use a distinct agent key per origin, so the key is not a cross-origin correlator.<a href="#section-4.6-9.3.1" class="pilcrow">¶</a></p>
+</li>
+          <li class="normal" id="section-4.6-9.4">
+            <p id="section-4.6-9.4.1">The request MUST be sent over TLS.<a href="#section-4.6-9.4.1" class="pilcrow">¶</a></p>
+</li>
+        </ul>
+<p id="section-4.6-10">AAP uses the agent's existing Web Bot Auth signature as the possession proof: in the bearer mode it provides request integrity and confines the token to the signed request, and in the key-bound mode it is additionally the key the token commits to. Agent-software identity (which operator is calling) is carried by the Web Bot Auth layer and its key directory, not by the AAT; a verifier that needs the operator reads it there, and the AAT stays silent on it. The layers remain separate on the wire as in the architecture. Where the agent's key lives on hardware the platform does not control, the platform's endorsement of that key is profiled in <span>[<a href="#AAP-LOCAL" class="cite xref">AAP-LOCAL</a>]</span>.<a href="#section-4.6-10" class="pilcrow">¶</a></p>
+<div id="proactive-presentation">
+<section id="section-4.6.1">
+          <h4 id="name-proactive-presentation">
+<a href="#section-4.6.1" class="section-number selfRef">4.6.1. </a><a href="#name-proactive-presentation" class="section-name selfRef">Proactive Presentation</a>
+          </h4>
+<p id="section-4.6.1-1">An agent MAY present an AAT without waiting for a challenge when it already knows a verifier requires one, purely to save the challenge round trip. This is an agent-policy choice and is never required, and it spends a pooled token even where the verifier would not have required one. A verifier that would have challenged for the token's issuer admits the request directly, saving the round trip; a verifier that would not have challenged ignores the unsolicited token. Because the agent cannot learn the verifier's accepted-issuer set until it sees a challenge, a proactively presented token from an unaccepted issuer MUST be answered with the <code>401</code> challenge of <a href="#presentation" class="auto internal xref">Section 4.6</a>, and the agent falls back to the challenge exchange. Recognizing agent traffic in order to route it, rather than to gate it, is a separate concern carried by the Web Bot Auth signature, not by a proactively presented AAT (<a href="#architecture" class="auto internal xref">Section 2</a>).<a href="#section-4.6.1-1" class="pilcrow">¶</a></p>
+</section>
+</div>
+<div id="session-establishment">
+<section id="section-4.6.2">
+          <h4 id="name-session-establishment">
+<a href="#section-4.6.2" class="section-number selfRef">4.6.2. </a><a href="#name-session-establishment" class="section-name selfRef">Session Establishment</a>
+          </h4>
+<p id="section-4.6.2-1">The AAT bootstraps; it is not a session. This matters more than in a multi-use design, because a Privacy Pass token is single-use (<a href="#verification" class="auto internal xref">Section 4.7</a>): the natural shape is to redeem one AAT at first contact and let the verifier establish its own session for the rest of the interaction.<a href="#section-4.6.2-1" class="pilcrow">¶</a></p>
+<ul class="normal">
+<li class="normal" id="section-4.6.2-2.1">
+              <p id="section-4.6.2-2.1.1">A verifier SHOULD establish its own session after redeeming an AAT, in whatever form its architecture already uses (a cookie, a bearer token, a header of its choosing). Subsequent requests ride that session credential; no further AAT is redeemed. Note that this session is itself the correlation scope for that verifier: the AAT is unlinkable, but once a session is bound to the agent's key and activity, that verifier correlates everything within it. The privacy boundary is per-verifier and per-agent-key; an agent limits cross-context correlation by using distinct keys and not carrying a session beyond its purpose.<a href="#section-4.6.2-2.1.1" class="pilcrow">¶</a></p>
+</li>
+            <li class="normal" id="section-4.6.2-2.2">
+              <p id="section-4.6.2-2.2.1">A stateless verifier that establishes no session re-challenges per request, and the agent redeems a fresh token from its pool each time. This is the costly path — one token per request, and an issuance pipeline to keep the pool filled — and an issuer serving such verifiers MUST provision issuance capacity accordingly. Edges that verify statelessly are the case to watch; services almost always establish sessions.<a href="#section-4.6.2-2.2.1" class="pilcrow">¶</a></p>
+</li>
+            <li class="normal" id="section-4.6.2-2.3">
+              <p id="section-4.6.2-2.3.1">The session stands on the verifier's own policy: the verifier MAY re-challenge for a fresh AAT at any point (a sensitive action after a quiet interval being the obvious moment).<a href="#section-4.6.2-2.3.1" class="pilcrow">¶</a></p>
+</li>
+            <li class="normal" id="section-4.6.2-2.4">
+              <p id="section-4.6.2-2.4.1">Revoking the linking grant (<a href="#identity-linking" class="auto internal xref">Section 4.5.2</a>) stops new issuance at once, but does not reach AATs already in the agent's pool — which, being unlinkable, the issuer cannot identify to revoke — nor sessions a verifier already established. Short pool lifetimes (an issuer MAY scope issued tokens to a key epoch and rotate, <a href="#issuer-keys" class="auto internal xref">Section 5.2</a>) bound the first; re-challenging on sensitive actions bounds the second. Targeted revocation of an individual outstanding token is not possible by construction and is out of scope; this is a cost of unlinkability (<a href="#security" class="auto internal xref">Section 10</a>). Where a module grants further standing authority under the same linking grant, revocation reaches it per that module's rules.<a href="#section-4.6.2-2.4.1" class="pilcrow">¶</a></p>
+</li>
+            <li class="normal" id="section-4.6.2-2.5">
+              <p id="section-4.6.2-2.5.1">A retry after a lost response re-presents a spent token and fails the double-spend check (<a href="#verification" class="auto internal xref">Section 4.7</a>); the agent SHOULD retry with a fresh AAT from its pool. The check deduplicates tokens, not operations: a service MUST NOT rely on it for request idempotency. Exactly-once semantics come from a client-supplied idempotency key at the request-processing layer (for example <span>[<a href="#I-D.ietf-httpapi-idempotency-key-header" class="cite xref">I-D.ietf-httpapi-idempotency-key-header</a>]</span>).<a href="#section-4.6.2-2.5.1" class="pilcrow">¶</a></p>
+</li>
+          </ul>
+<p id="section-4.6.2-3">Whether to require an AAT at all is the verifier's own policy; a verifier that does require one MUST challenge for it with the <code>401</code> <code>PrivateToken</code> challenge above (<a href="#presentation" class="auto internal xref">Section 4.6</a>). In the common commerce shape: the edge verifies a redeemed AAT statelessly and passes traffic; the service redeems (or accepts the edge's assertion of) one AAT at first contact and sets the session cookie it would for any customer; from there the interaction is indistinguishable from a signed-in user.<a href="#section-4.6.2-3" class="pilcrow">¶</a></p>
+</section>
+</div>
+</section>
+</div>
+<div id="verification">
+<section id="section-4.7">
+        <h3 id="name-verification">
+<a href="#section-4.7" class="section-number selfRef">4.7. </a><a href="#name-verification" class="section-name selfRef">Verification</a>
+        </h3>
+<p id="section-4.7-1">Any party consuming an AAT MUST verify all of the following, failing closed at the first failure:<a href="#section-4.7-1" class="pilcrow">¶</a></p>
+<ol start="1" type="1" class="normal type-1" id="section-4.7-2">
+<li id="section-4.7-2.1">
+            <p id="section-4.7-2.1.1">Token structure and type. The <code>Authorization</code> header carries a <code>PrivateToken</code> of <code>token_type</code> <code>0x0002</code>; any other type presented as an AAT is rejected.<a href="#section-4.7-2.1.1" class="pilcrow">¶</a></p>
+</li>
+          <li id="section-4.7-2.2">
+            <p id="section-4.7-2.2.1">Issuer trust and key resolution. The <code>token_key_id</code> resolves to a public key of an issuer this verifier trusts (<a href="#issuer-keys" class="auto internal xref">Section 5.2</a>). Keys are drawn only from trusted issuers before any signature work.<a href="#section-4.7-2.2.1" class="pilcrow">¶</a></p>
+</li>
+          <li id="section-4.7-2.3">
+            <p id="section-4.7-2.3.1">Challenge match. The token's <code>challenge_digest</code> equals <code>SHA-256(TokenChallenge)</code> for the stable challenge parameters this profile pools against (fixed <code>issuer_name</code>, empty <code>origin_info</code>, and the <code>redemption_context</code> of the binding mode in force, <a href="#token-binding" class="auto internal xref">Section 4.5.4</a>). In the key-bound mode the expected <code>redemption_context</code> is reconstructed from the RFC 7638 thumbprint of the request's signing key, so this step also enforces the key binding. A token whose digest does not match was minted for some other context and is rejected.<a href="#section-4.7-2.3.1" class="pilcrow">¶</a></p>
+</li>
+          <li id="section-4.7-2.4">
+            <p id="section-4.7-2.4.1">Token signature. The Blind RSA <code>authenticator</code> verifies under the resolved issuer key over the token input (<span>[<a href="#RFC9578" class="cite xref">RFC9578</a>]</span>). Public metadata, if present, is read here (<a href="#public-metadata" class="auto internal xref">Section 4.3</a>).<a href="#section-4.7-2.4.1" class="pilcrow">¶</a></p>
+</li>
+          <li id="section-4.7-2.5">
+            <p id="section-4.7-2.5.1">Request signature. The request carries a Web Bot Auth HTTP Message Signature (<a href="#presentation" class="auto internal xref">Section 4.6</a>) with tag <code>web-bot-auth</code>, covering the required components including the <code>Authorization</code> header, verifying under the agent key, within its <code>created</code>/<code>expires</code> window. In the bearer mode this signature is what prevents an on-path party from lifting the token into another request; in the key-bound mode the signing key's thumbprint must also reconstruct the token's <code>redemption_context</code> (step 3). Omitting this step reduces the AAT to an unbound bearer token usable by anyone who observes it.<a href="#section-4.7-2.5.1" class="pilcrow">¶</a></p>
+</li>
+          <li id="section-4.7-2.6">
+            <p id="section-4.7-2.6.1">Double-spend. The token's <code>nonce</code> (with <code>challenge_digest</code>) has not been seen before. The verifier MUST keep a seen-token cache and reject a re-presented token; a token is single-use (<span>[<a href="#RFC9577" class="cite xref">RFC9577</a>]</span>). Because this profile's <code>TokenChallenge</code> is stable and re-advertised indefinitely, the seen-token entry MUST be retained for as long as the token's key is accepted (<a href="#issuer-keys" class="auto internal xref">Section 5.2</a>); the challenge's <code>max-age</code> bounds only how long the verifier accepts the challenge (<span>[<a href="#RFC9577" class="cite xref">RFC9577</a>]</span>), not the seen-token cache. Re-use of one token across requests is not legitimate; a fresh token is drawn per redemption, including for an honest retry after a lost response (<a href="#session-establishment" class="auto internal xref">Section 4.6.2</a>).<a href="#section-4.7-2.6.1" class="pilcrow">¶</a></p>
+</li>
+        </ol>
+<p id="section-4.7-3">What passing yields is exactly the attestation layer's promise and no more: a trusted issuer admitted an accountable principal behind this agent, the presenter holds the agent key (and, in the key-bound mode, the key the token commits to), and the token has not been spent. Who the principal is, and any fact about them, are outside this document.<a href="#section-4.7-3" class="pilcrow">¶</a></p>
+<p id="section-4.7-4">What a verifier does beyond the checklist is its own trust policy: which issuers and which public-metadata classes it accepts, whether a failed or absent AAT means blocking, challenging, or serving with reduced trust, and how it proceeds when an issuer's keys are unreachable and uncached. The protocol verifies; the verifier decides.<a href="#section-4.7-4" class="pilcrow">¶</a></p>
+</section>
+</div>
+</section>
+</div>
+<div id="discovery">
+<section id="section-5">
+      <h2 id="name-discovery">
+<a href="#section-5" class="section-number selfRef">5. </a><a href="#name-discovery" class="section-name selfRef">Discovery</a>
+      </h2>
+<p id="section-5-1">Discovery centers on the issuer, the one publisher whose capabilities matter to strangers. The core needs two things from it: the issuance endpoint agents call, and the public keys verifiers check tokens against.<a href="#section-5-1" class="pilcrow">¶</a></p>
+<div id="issuer-metadata">
+<section id="section-5.1">
+        <h3 id="name-issuer-metadata">
+<a href="#section-5.1" class="section-number selfRef">5.1. </a><a href="#name-issuer-metadata" class="section-name selfRef">Issuer Metadata</a>
+        </h3>
+<p id="section-5.1-1">An issuer publishes a configuration document at a well-known location under its identifier:<a href="#section-5.1-1" class="pilcrow">¶</a></p>
+<div class="alignLeft art-text artwork" id="section-5.1-2">
+<pre>
+GET https://idp.example/.well-known/aap-issuer
+</pre><a href="#section-5.1-2" class="pilcrow">¶</a>
+</div>
+<div class="lang-json sourcecode" id="section-5.1-3">
+<pre>
+{
+  "issuer": "https://idp.example",
+  "token_issuance_endpoint": "https://idp.example/aap-issuer/issue",
+  "token_keys": "https://idp.example/.well-known/aap-issuer/token-keys"
+}
+</pre><a href="#section-5.1-3" class="pilcrow">¶</a>
+</div>
+<table class="center" id="table-2">
+          <caption><a href="#table-2" class="selfRef">Table 2</a></caption>
+<thead>
+            <tr>
+              <th class="text-left" rowspan="1" colspan="1">Member</th>
+              <th class="text-left" rowspan="1" colspan="1">Meaning</th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr>
+              <td class="text-left" rowspan="1" colspan="1">
+                <code>issuer</code>
+</td>
+              <td class="text-left" rowspan="1" colspan="1">The issuer's identifier. REQUIRED. MUST equal the origin the document was resolved from.</td>
+            </tr>
+            <tr>
+              <td class="text-left" rowspan="1" colspan="1">
+                <code>token_issuance_endpoint</code>
+</td>
+              <td class="text-left" rowspan="1" colspan="1">Where agents run blind issuance to fill their AAT pool (<a href="#token-issuance" class="auto internal xref">Section 4.5.3</a>). REQUIRED.</td>
+            </tr>
+            <tr>
+              <td class="text-left" rowspan="1" colspan="1">
+                <code>token_keys</code>
+</td>
+              <td class="text-left" rowspan="1" colspan="1">The issuer's Privacy Pass public keys, by <code>token_key_id</code>, for offline AAT verification (<a href="#issuer-keys" class="auto internal xref">Section 5.2</a>). REQUIRED.</td>
+            </tr>
+          </tbody>
+        </table>
+<p id="section-5.1-5">The document is extensible: a module registers additional members (the identity claims module registers its endpoints and capability advertisement here, <span>[<a href="#AAP-CLAIMS" class="cite xref">AAP-CLAIMS</a>]</span>), and a consumer MUST ignore members it does not understand. Which modules an issuer offers is read from which members are present.<a href="#section-5.1-5" class="pilcrow">¶</a></p>
+<p id="section-5.1-6">All endpoints and key URLs MUST be same-origin as <code>issuer</code>, fetched over HTTPS with no cross-origin redirects and no IP-literal hosts; a verifier or agent MUST reject a document that names an off-origin endpoint. The document is cacheable per <span>[<a href="#RFC9110" class="cite xref">RFC9110</a>]</span>.<a href="#section-5.1-6" class="pilcrow">¶</a></p>
+</section>
+</div>
+<div id="issuer-keys">
+<section id="section-5.2">
+        <h3 id="name-issuer-keys">
+<a href="#section-5.2" class="section-number selfRef">5.2. </a><a href="#name-issuer-keys" class="section-name selfRef">Issuer Keys</a>
+        </h3>
+<p id="section-5.2-1">The <code>token_keys</code> document carries the issuer's Privacy Pass public keys (Blind RSA, selected by <code>token_key_id</code>) for AAT verification. Keys rotate additively: the issuer publishes a successor before using it and retires a predecessor after a grace period longer than the longest outstanding token. Token-key rotation doubles as the coarse revocation lever for the unlinkable pool (<a href="#session-establishment" class="auto internal xref">Section 4.6.2</a>): retiring a token key invalidates every AAT signed under it. Consumers MUST fetch keys over HTTPS from the named host and MUST NOT follow cross-origin redirects or resolve IP-literal URLs.<a href="#section-5.2-1" class="pilcrow">¶</a></p>
+<p id="section-5.2-2">The agent's HTTP Message Signature uses an algorithm from the registry of <span>[<a href="#RFC9421" class="cite xref">RFC9421</a>]</span>. Modules that define JWS-signed artifacts state their own algorithm profiles.<a href="#section-5.2-2" class="pilcrow">¶</a></p>
+</section>
+</div>
+</section>
+</div>
+<div id="trust-model">
+<section id="section-6">
+      <h2 id="name-trust-model">
+<a href="#section-6" class="section-number selfRef">6. </a><a href="#name-trust-model" class="section-name selfRef">Trust Model</a>
+      </h2>
+<p id="section-6-1">This section is informative.<a href="#section-6-1" class="pilcrow">¶</a></p>
+<p id="section-6-2">Privacy Pass defines four roles — Client, Attester, Issuer, and Origin (<span>[<a href="#RFC9576" class="cite xref">RFC9576</a>]</span>). AAP maps them to its own terms: the Agent is the Client, the Service (or Edge) is the Origin and verifier, and the AAT Issuer is the Privacy Pass Issuer. In this revision the Issuer also performs the Attester role: the linking grant is the attestation that a real, consented principal is behind the agent, so a separate Attester is not required — the issuer is the principal's own IdP. Splitting Attester from Issuer — so that the party checking principal-accountability is not the party signing tokens — is a supported extension for deployments that want the issuer blind to the principal's identity even at issuance, at the cost of a third party. The unlinkability property holds in both arrangements: it is a property of blind issuance, not of the role split.<a href="#section-6-2" class="pilcrow">¶</a></p>
+<p id="section-6-3">AAP adds the platform to this role map: the principal is the subject of attestation, the platform is the enrolled operator the principal authorizes (<a href="#platform-enrollment" class="auto internal xref">Section 4.5.1</a>), and the agent is the Privacy Pass Client that obtains and spends tokens. The issuer's trust in the platform is operator vetting, not attestation (it attests the principal itself), and the platform's identity stays in the Web Bot Auth layer rather than the AAT (<a href="#platform-enrollment" class="auto internal xref">Section 4.5.1</a>, <a href="#privacy" class="auto internal xref">Section 9</a>).<a href="#section-6-3" class="pilcrow">¶</a></p>
+</section>
+</div>
+<div id="related-work">
+<section id="section-7">
+      <h2 id="name-relationship-to-existing-wo">
+<a href="#section-7" class="section-number selfRef">7. </a><a href="#name-relationship-to-existing-wo" class="section-name selfRef">Relationship to Existing Work</a>
+      </h2>
+<p id="section-7-1">This section is informative.<a href="#section-7-1" class="pilcrow">¶</a></p>
+<p id="section-7-2">The core is assembled almost entirely from existing work; its contribution is the composition and the governing split, not new cryptography.<a href="#section-7-2" class="pilcrow">¶</a></p>
+<table class="center" id="table-3">
+        <caption><a href="#table-3" class="selfRef">Table 3</a></caption>
+<thead>
+          <tr>
+            <th class="text-left" rowspan="1" colspan="1">Work</th>
+            <th class="text-left" rowspan="1" colspan="1">What it provides</th>
+            <th class="text-left" rowspan="1" colspan="1">How this document uses it</th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr>
+            <td class="text-left" rowspan="1" colspan="1">Privacy Pass (<span>[<a href="#RFC9576" class="cite xref">RFC9576</a>]</span>, <span>[<a href="#RFC9577" class="cite xref">RFC9577</a>]</span>, <span>[<a href="#RFC9578" class="cite xref">RFC9578</a>]</span>)</td>
+            <td class="text-left" rowspan="1" colspan="1">Anonymous, unlinkable, publicly verifiable tokens via blind issuance</td>
+            <td class="text-left" rowspan="1" colspan="1">Profiled as the attestation layer: an AAT <em>is</em> a Privacy Pass token whose meaning is "an accountable principal backs this agent" (<a href="#aat" class="auto internal xref">Section 4</a>)</td>
+          </tr>
+          <tr>
+            <td class="text-left" rowspan="1" colspan="1">Web Bot Auth / HTTP Message Signatures (<span>[<a href="#RFC9421" class="cite xref">RFC9421</a>]</span>, <span>[<a href="#I-D.meunier-web-bot-auth-architecture" class="cite xref">I-D.meunier-web-bot-auth-architecture</a>]</span>)</td>
+            <td class="text-left" rowspan="1" colspan="1">Proof of which software signed a request, under a directory-published key</td>
+            <td class="text-left" rowspan="1" colspan="1">Composed beneath AAP for agent-software identity, and reused as the per-request signature that binds the AAT to the presenting agent (<a href="#presentation" class="auto internal xref">Section 4.6</a>)</td>
+          </tr>
+          <tr>
+            <td class="text-left" rowspan="1" colspan="1">OpenID Connect Discovery / OAuth AS Metadata (<span>[<a href="#OIDC-Discovery" class="cite xref">OIDC-Discovery</a>]</span>, <span>[<a href="#RFC8414" class="cite xref">RFC8414</a>]</span>)</td>
+            <td class="text-left" rowspan="1" colspan="1">Issuer-level <code>.well-known</code> capability document</td>
+            <td class="text-left" rowspan="1" colspan="1">The shape of the issuer metadata document (<a href="#issuer-metadata" class="auto internal xref">Section 5.1</a>)</td>
+          </tr>
+          <tr>
+            <td class="text-left" rowspan="1" colspan="1">Public-metadata issuance (<span>[<a href="#I-D.ietf-privacypass-public-metadata-issuance" class="cite xref">I-D.ietf-privacypass-public-metadata-issuance</a>]</span>)</td>
+            <td class="text-left" rowspan="1" colspan="1">A coarse readable class threaded through blind signing</td>
+            <td class="text-left" rowspan="1" colspan="1">The optional non-identity assurance class on an AAT (<a href="#public-metadata" class="auto internal xref">Section 4.3</a>)</td>
+          </tr>
+          <tr>
+            <td class="text-left" rowspan="1" colspan="1">MoLE (<span>[<a href="#I-D.jms-mole-architecture" class="cite xref">I-D.jms-mole-architecture</a>]</span>)</td>
+            <td class="text-left" rowspan="1" colspan="1">Endorsements from Anchors that hide the issuing Anchor, redeemed for anonymous Credentials whose state a Moderator updates</td>
+            <td class="text-left" rowspan="1" colspan="1">Not used. A separate design for the same admission question (<a href="#related-mole" class="auto internal xref">Section 7.1</a>)</td>
+          </tr>
+        </tbody>
+      </table>
+<p id="section-7-4">Privacy Pass gives unlinkable, offline-verifiable tokens as a primitive; AAP supplies the trust framework around them: a named, accountable issuer whose vouch the token carries. What is new is the <em>meaning</em> bound to a Privacy Pass token, and the discipline of keeping that token fact-free.<a href="#section-7-4" class="pilcrow">¶</a></p>
+<div id="related-mole">
+<section id="section-7.1">
+        <h3 id="name-moderation-of-unlinkable-en">
+<a href="#section-7.1" class="section-number selfRef">7.1. </a><a href="#name-moderation-of-unlinkable-en" class="section-name selfRef">Moderation of unLinkable Endorsements (MoLE)</a>
+        </h3>
+<p id="section-7.1-1">MoLE (<span>[<a href="#I-D.jms-mole-architecture" class="cite xref">I-D.jms-mole-architecture</a>]</span>, <span>[<a href="#I-D.jms-mole-protocols" class="cite xref">I-D.jms-mole-protocols</a>]</span>) also supports anonymous admission. A client redeems an Anchor's Endorsement at a Moderator for an anonymous Credential. The Moderator can update the Credential's state during presentation, for example to rate-limit access, and can end the Credential by withholding the update. When the Moderator accepts more than one Anchor, redemption hides which of them granted the Endorsement.<a href="#section-7.1-1" class="pilcrow">¶</a></p>
+<p id="section-7.1-2">An AAP Issuer and a MoLE Anchor have analogous roles. AAP requires an authenticated principal who authorized an enrolled platform to represent them. MoLE leaves endorsement criteria to each Anchor, which may use a login, CAPTCHA, or another trust signal. In both designs, a server accepts each token or redemption once.<a href="#section-7.1-2" class="pilcrow">¶</a></p>
+<p id="section-7.1-3">The designs differ in four ways:<a href="#section-7.1-3" class="pilcrow">¶</a></p>
+<ul class="normal">
+<li class="normal" id="section-7.1-4.1">
+            <p id="section-7.1-4.1.1">AAP names the issuer at redemption, and a verifier applies its trust policy per issuer (<a href="#verification" class="auto internal xref">Section 4.7</a>). MoLE hides the Anchor among the Anchors that the Moderator accepts.<a href="#section-7.1-4.1.1" class="pilcrow">¶</a></p>
+</li>
+          <li class="normal" id="section-7.1-4.2">
+            <p id="section-7.1-4.2.1">AAP ends at admission, and the verifier establishes its own session (<a href="#session-establishment" class="auto internal xref">Section 4.6.2</a>). MoLE continues with a Credential whose state changes without linking the presentations of the client.<a href="#section-7.1-4.2.1" class="pilcrow">¶</a></p>
+</li>
+          <li class="normal" id="section-7.1-4.3">
+            <p id="section-7.1-4.3.1">MoLE does not define identity disclosure. The identity claims module (<span>[<a href="#AAP-CLAIMS" class="cite xref">AAP-CLAIMS</a>]</span>) has no MoLE counterpart.<a href="#section-7.1-4.3.1" class="pilcrow">¶</a></p>
+</li>
+          <li class="normal" id="section-7.1-4.4">
+            <p id="section-7.1-4.4.1">AAP identifies the agent software through Web Bot Auth. MoLE says that from the credential alone a delegated agent looks like its user, and that hiding differences in request content, timing, or rate is the user agent's job. MoLE also allows a separate pool of Anchors for agents.<a href="#section-7.1-4.4.1" class="pilcrow">¶</a></p>
+</li>
+        </ul>
+</section>
+</div>
+</section>
+</div>
+<div id="authn-coexistence">
+<section id="section-8">
+      <h2 id="name-coexistence-with-authentica">
+<a href="#section-8" class="section-number selfRef">8. </a><a href="#name-coexistence-with-authentica" class="section-name selfRef">Coexistence with Authentication and Authorization</a>
+      </h2>
+<p id="section-8-1">This section is informative.<a href="#section-8-1" class="pilcrow">¶</a></p>
+<p id="section-8-2">AAP does not replace a service's authentication or authorization. It occupies the middle of a stack in which each layer, read upward, links a request more strongly to a party:<a href="#section-8-2" class="pilcrow">¶</a></p>
+<ol start="1" type="1" class="normal type-1" id="section-8-3">
+<li id="section-8-3.1">
+          <p id="section-8-3.1.1"><strong>Web Bot Auth</strong> (<span>[<a href="#I-D.meunier-web-bot-auth-architecture" class="cite xref">I-D.meunier-web-bot-auth-architecture</a>]</span>) identifies the software: every AAP request carries its signature (<a href="#presentation" class="auto internal xref">Section 4.6</a>), naming an operator but no principal.<a href="#section-8-3.1.1" class="pilcrow">¶</a></p>
+</li>
+        <li id="section-8-3.2">
+          <p id="section-8-3.2.1"><strong>AAP</strong> adds the principal: the AAT attests that an accountable principal stands behind the software while naming no one (<a href="#aat" class="auto internal xref">Section 4</a>).<a href="#section-8-3.2.1" class="pilcrow">¶</a></p>
+</li>
+        <li id="section-8-3.3">
+          <p id="section-8-3.3.1"><strong>Conventional authentication and authorization</strong> — an OAuth or OpenID Connect relationship the principal already holds with the service — links the request to a known account. This is the strongest linking, and the service's existing authorization model applies to it unchanged.<a href="#section-8-3.3.1" class="pilcrow">¶</a></p>
+</li>
+      </ol>
+<p id="section-8-4">A service offers the postures side by side with plain HTTP: a <code>401</code> carries one challenge per scheme the service accepts, and the client selects one it can satisfy (Section 11.6.1 of <span>[<a href="#RFC9110" class="cite xref">RFC9110</a>]</span>; Section 7.2 of <span>[<a href="#RFC9449" class="cite xref">RFC9449</a>]</span> advertises <code>Bearer</code> and <code>DPoP</code> together this way). A verifier with existing OAuth relationships can advertise a <code>Bearer</code> or <code>DPoP</code> (<span>[<a href="#RFC9449" class="cite xref">RFC9449</a>]</span>) challenge beside its per-issuer <code>PrivateToken</code> challenges (<a href="#presentation" class="auto internal xref">Section 4.6</a>). An agent whose principal holds an account answers the identified scheme and proceeds as that account; one that does not, or that prefers anonymity, answers <code>PrivateToken</code> and is admitted on attestation alone. Answering an identified scheme is a deliberate de-anonymization, and the choice belongs to the agent: the anonymous path remains available in the same response.<a href="#section-8-4" class="pilcrow">¶</a></p>
+<p id="section-8-5">The layers also run in sequence within one interaction: a service commonly admits anonymously on an AAT and from there runs its ordinary session and authorization as it would for any customer (<a href="#session-establishment" class="auto internal xref">Section 4.6.2</a>). Where the identity claims module is deployed, a consented disclosure — a verified email, say — can serve as account-provisioning evidence, stepping the interaction up from the anonymous posture to a conventional account (<span>[<a href="#AAP-CLAIMS" class="cite xref">AAP-CLAIMS</a>]</span>, <span>[<a href="#OIDC" class="cite xref">OIDC</a>]</span>).<a href="#section-8-5" class="pilcrow">¶</a></p>
+<p id="section-8-6">AAP defines none of the identified schemes, imposes no ordering among a <code>401</code>'s challenges, and takes no position on which posture a service should prefer.<a href="#section-8-6" class="pilcrow">¶</a></p>
+</section>
+</div>
+<div id="privacy">
+<section id="section-9">
+      <h2 id="name-privacy-considerations">
+<a href="#section-9" class="section-number selfRef">9. </a><a href="#name-privacy-considerations" class="section-name selfRef">Privacy Considerations</a>
+      </h2>
+<p id="section-9-1">The attestation layer is designed so that privacy at the front door is structural: it holds by construction, not as a matter of issuer or verifier policy. This section states the properties that hold and is candid about the residual exposures that remain and how a deployment bounds them.<a href="#section-9-1" class="pilcrow">¶</a></p>
+<p id="section-9-2"><strong>Unlinkability of issuance and redemption.</strong> An AAT is issued by blind signing (<a href="#token-issuance" class="auto internal xref">Section 4.5.3</a>): the issuer signs a token it cannot correlate to the principal who requested it, and a redeemed token cannot be tied back to its issuance. The issuer therefore cannot reconstruct which principal presented a token to which verifier, and colluding verifiers cannot link a principal's activity across them through the token. The residual is a timing and volume side channel: an issuer that issued to one principal and a verifier that redeems in a narrow window can, by correlation, narrow the set of candidate principals. The control is set size — issuing in pools ahead of use decouples issuance time from redemption time, and a larger, busier issuance population widens the anonymity set. An issuer SHOULD issue in pools and SHOULD NOT mint single tokens on demand at the moment of redemption. Unlinkability also depends on where the blinding happens: an intermediary that sees unblinded token material can recognize the token at redemption, which is why the custody rules of <a href="#token-issuance" class="auto internal xref">Section 4.5.3</a> keep blinding and finished tokens with the agent whatever path issuance traffic takes.<a href="#section-9-2" class="pilcrow">¶</a></p>
+<p id="section-9-3"><strong>A fact-free, handle-free credential.</strong> The AAT carries no attribute of the principal and no identifier that resolves to one (<a href="#prohibited-content" class="auto internal xref">Section 4.4</a>). This is deliberate and load-bearing: any readable attribute is fingerprinting entropy that narrows the anonymity set, and any handle the issuer can resolve is a tracking surface whether or not it is read at the door. By carrying neither, the AAT removes both hazards at the layer where the credential travels to every party on the path: privacy holds by construction, independent of whether those parties log or correlate what they receive.<a href="#section-9-3" class="pilcrow">¶</a></p>
+<p id="section-9-4"><strong>Public metadata partitions the anonymity set.</strong> Where an issuer attaches a coarse class via the public-metadata extension (<a href="#public-metadata" class="auto internal xref">Section 4.3</a>), every distinct value a verifier can read divides the population into a smaller set: a two-valued class halves it, and a high-cardinality value would shrink it toward identification. An issuer therefore MUST keep public metadata low-cardinality and non-identifying, and SHOULD treat the count of distinct values as a privacy budget spent against the anonymity set, not a free annotation channel.<a href="#section-9-4" class="pilcrow">¶</a></p>
+<p id="section-9-5"><strong>Agent keys and the correlation scope.</strong> The agent's Web Bot Auth key is a correlator within its scope: every request it signs at a verifier is linkable to every other. An agent SHOULD use a distinct key per origin so the key is not a cross-origin correlator (<a href="#presentation" class="auto internal xref">Section 4.6</a>). In the key-bound binding mode (<a href="#token-binding" class="auto internal xref">Section 4.5.4</a>) an agent's AATs additionally share a per-key-stable value and are linkable to one another within that scope; with per-origin keys this is bounded to a single origin and is no worse than the linkability the signing key already creates there. The AAT itself is unlinkable, but the session a verifier establishes after admission (<a href="#session-establishment" class="auto internal xref">Section 4.6.2</a>) is a correlation scope: within it, that verifier correlates the agent's activity as it would any session. The privacy boundary is therefore per-verifier and per-agent-key, and an agent limits correlation by using distinct keys and not carrying a session beyond its purpose.<a href="#section-9-5" class="pilcrow">¶</a></p>
+</section>
+</div>
+<div id="security">
+<section id="section-10">
+      <h2 id="name-security-considerations">
+<a href="#section-10" class="section-number selfRef">10. </a><a href="#name-security-considerations" class="section-name selfRef">Security Considerations</a>
+      </h2>
+<p id="section-10-1">TODO. Points to cover:<a href="#section-10-1" class="pilcrow">¶</a></p>
+<ul class="normal">
+<li class="normal" id="section-10-2.1">
+          <p id="section-10-2.1.1">Token theft: in the bearer mode an AAT is a bearer credential whose replay is bounded by single-use, the double-spend cache, and issuance rate limits; the optional key-bound mode makes a token non-transferable at the binding costs of <a href="#token-binding" class="auto internal xref">Section 4.5.4</a>. Residual exposure if the agent private key is compromised.<a href="#section-10-2.1.1" class="pilcrow">¶</a></p>
+</li>
+        <li class="normal" id="section-10-2.2">
+          <p id="section-10-2.2.1">Double-spend and the seen-token cache; the single-use property and its tension with stateless multi-request verification.<a href="#section-10-2.2.1" class="pilcrow">¶</a></p>
+</li>
+        <li class="normal" id="section-10-2.3">
+          <p id="section-10-2.3.1">Loss of targeted revocation for outstanding unlinkable tokens; key-epoch rotation as the only coarse lever; short pool lifetimes.<a href="#section-10-2.3.1" class="pilcrow">¶</a></p>
+</li>
+        <li class="normal" id="section-10-2.4">
+          <p id="section-10-2.4.1">Publicly verifiable token type mandated so verifier need not be issuer; why VOPRF is excluded for ambient verification.<a href="#section-10-2.4.1" class="pilcrow">¶</a></p>
+</li>
+        <li class="normal" id="section-10-2.5">
+          <p id="section-10-2.5.1">The trust concentrated in the enrolled platform and its issuance credential; consequences of platform client-credential compromise (bulk issuance under stolen authority) and the issuer-side rate limits that bound it.<a href="#section-10-2.5.1" class="pilcrow">¶</a></p>
+</li>
+        <li class="normal" id="section-10-2.6">
+          <p id="section-10-2.6.1">Issuance custody (<a href="#token-issuance" class="auto internal xref">Section 4.5.3</a>): a platform or relay that holds unblinded token material becomes a token custodian able to recognize tokens at redemption; tokens moved between agent instances are indistinguishable from stolen ones.<a href="#section-10-2.6.1" class="pilcrow">¶</a></p>
+</li>
+      </ul>
+</section>
+</div>
+<div id="iana">
+<section id="section-11">
+      <h2 id="name-iana-considerations">
+<a href="#section-11" class="section-number selfRef">11. </a><a href="#name-iana-considerations" class="section-name selfRef">IANA Considerations</a>
+      </h2>
+<p id="section-11-1">TODO. Registrations implied by the current text:<a href="#section-11-1" class="pilcrow">¶</a></p>
+<ul class="normal">
+<li class="normal" id="section-11-2.1">
+          <p id="section-11-2.1.1">The <code>urn:aap:</code> URN namespace. This document registers the namespace; each module registers its own values within it (<span>[<a href="#AAP-CLAIMS" class="cite xref">AAP-CLAIMS</a>]</span>). The namespace is provisional: if this document enters the IETF stream, these types move to a sub-namespace of <code>urn:ietf:params</code>, registered under <span>[<a href="#RFC3553" class="cite xref">RFC3553</a>]</span>, and early implementations should expect that rename.<a href="#section-11-2.1.1" class="pilcrow">¶</a></p>
+</li>
+        <li class="normal" id="section-11-2.2">
+          <p id="section-11-2.2.1">A Privacy Pass token type, or a reuse of <code>0x0002</code> with a profile registration, for the AAT.<a href="#section-11-2.2.1" class="pilcrow">¶</a></p>
+</li>
+        <li class="normal" id="section-11-2.3">
+          <p id="section-11-2.3.1">Reuse of <code>Authorization: PrivateToken</code> (<span>[<a href="#RFC9577" class="cite xref">RFC9577</a>]</span>) for AAT redemption; HTTP Message Signature tag <code>web-bot-auth</code>.<a href="#section-11-2.3.1" class="pilcrow">¶</a></p>
+</li>
+        <li class="normal" id="section-11-2.4">
+          <p id="section-11-2.4.1">OAuth scope <code>aap:represent</code>.<a href="#section-11-2.4.1" class="pilcrow">¶</a></p>
+</li>
+        <li class="normal" id="section-11-2.5">
+          <p id="section-11-2.5.1">Well-known URI <code>aap-issuer</code> (issuer metadata, with token-keys beneath it), and a registry of issuer-metadata members that modules add to (<a href="#issuer-metadata" class="auto internal xref">Section 5.1</a>).<a href="#section-11-2.5.1" class="pilcrow">¶</a></p>
+</li>
+      </ul>
+</section>
+</div>
+<div id="open-items">
+<section id="section-12">
+      <h2 id="name-open-items">
+<a href="#section-12" class="section-number selfRef">12. </a><a href="#name-open-items" class="section-name selfRef">Open Items</a>
+      </h2>
+<p id="section-12-1">A running list of the decisions this revision defers, collected for review:<a href="#section-12-1" class="pilcrow">¶</a></p>
+<ul class="normal">
+<li class="normal" id="section-12-2.1">
+          <p id="section-12-2.1.1">Whether to retain the key-bound mode as an option alongside the bearer default, given that it costs unlinkability and deviates from RFC 9577's origin-driven <code>redemption_context</code> model. The <code>agent_kid || origin-nonce</code> variant is dropped as incompatible with pooling (<a href="#token-binding" class="auto internal xref">Section 4.5.4</a>).<a href="#section-12-2.1.1" class="pilcrow">¶</a></p>
+</li>
+        <li class="normal" id="section-12-2.2">
+          <p id="section-12-2.2.1">Presentation mode: resolved to challenge-driven against a stable pooled challenge (the verifier challenges, the agent answers from its pool, and Web Bot Auth supplies freshness and origin-binding). Strict origin-driven challenge-response (Privacy-Pass-native freshness, but no pooling and a synchronous issuance round trip per origin) was considered and rejected for the pooling cost (<a href="#presentation" class="auto internal xref">Section 4.6</a>).<a href="#section-12-2.2.1" class="pilcrow">¶</a></p>
+</li>
+        <li class="normal" id="section-12-2.3">
+          <p id="section-12-2.3.1">Agent key directory: bare JWK Sets, the Web Bot Auth signature directory (<span>[<a href="#I-D.meunier-http-message-signatures-directory" class="cite xref">I-D.meunier-http-message-signatures-directory</a>]</span>), or CIMD; the local-agent module's device-resident case bears on the choice (<span>[<a href="#AAP-LOCAL" class="cite xref">AAP-LOCAL</a>]</span>).<a href="#section-12-2.3.1" class="pilcrow">¶</a></p>
+</li>
+        <li class="normal" id="section-12-2.4">
+          <p id="section-12-2.4.1">Whether the linking ceremony needs a defined extension-point registry (which modules may attach standing authorizations at linking, and how they are announced), or whether module-by-module amendment (<a href="#identity-linking" class="auto internal xref">Section 4.5.2</a>) suffices.<a href="#section-12-2.4.1" class="pilcrow">¶</a></p>
+</li>
+        <li class="normal" id="section-12-2.5">
+          <p id="section-12-2.5.1">Whether the issuer-metadata member set warrants an IANA registry at this stage or a simple list maintained across the core and its modules (<a href="#issuer-metadata" class="auto internal xref">Section 5.1</a>).<a href="#section-12-2.5.1" class="pilcrow">¶</a></p>
+</li>
+      </ul>
+</section>
+</div>
+<div id="acknowledgments">
+<section id="section-13">
+      <h2 id="name-acknowledgments">
+<a href="#section-13" class="section-number selfRef">13. </a><a href="#name-acknowledgments" class="section-name selfRef">Acknowledgments</a>
+      </h2>
+<p id="section-13-1">TODO.<a href="#section-13-1" class="pilcrow">¶</a></p>
+</section>
+</div>
+<div id="sec-combined-references">
+<section id="section-14">
+      <h2 id="name-references">
+<a href="#section-14" class="section-number selfRef">14. </a><a href="#name-references" class="section-name selfRef">References</a>
+      </h2>
+<div id="sec-normative-references">
+<section id="section-14.1">
+        <h3 id="name-normative-references">
+<a href="#section-14.1" class="section-number selfRef">14.1. </a><a href="#name-normative-references" class="section-name selfRef">Normative References</a>
+        </h3>
+<dl class="references">
+<dt id="RFC2119">[RFC2119]</dt>
+        <dd>
+<span class="refAuthor">Bradner, S.</span>, <span class="refTitle">"Key words for use in RFCs to Indicate Requirement Levels"</span>, <span class="seriesInfo">BCP 14</span>, <span class="seriesInfo">RFC 2119</span>, <span class="seriesInfo">DOI 10.17487/RFC2119</span>, <time datetime="1997-03" class="refDate">March 1997</time>, <span>&lt;<a href="https://www.rfc-editor.org/rfc/rfc2119">https://www.rfc-editor.org/rfc/rfc2119</a>&gt;</span>. </dd>
+<dd class="break"></dd>
+<dt id="RFC7638">[RFC7638]</dt>
+        <dd>
+<span class="refAuthor">Jones, M.</span> and <span class="refAuthor">N. Sakimura</span>, <span class="refTitle">"JSON Web Key (JWK) Thumbprint"</span>, <span class="seriesInfo">RFC 7638</span>, <span class="seriesInfo">DOI 10.17487/RFC7638</span>, <time datetime="2015-09" class="refDate">September 2015</time>, <span>&lt;<a href="https://www.rfc-editor.org/rfc/rfc7638">https://www.rfc-editor.org/rfc/rfc7638</a>&gt;</span>. </dd>
+<dd class="break"></dd>
+<dt id="RFC8174">[RFC8174]</dt>
+        <dd>
+<span class="refAuthor">Leiba, B.</span>, <span class="refTitle">"Ambiguity of Uppercase vs Lowercase in RFC 2119 Key Words"</span>, <span class="seriesInfo">BCP 14</span>, <span class="seriesInfo">RFC 8174</span>, <span class="seriesInfo">DOI 10.17487/RFC8174</span>, <time datetime="2017-05" class="refDate">May 2017</time>, <span>&lt;<a href="https://www.rfc-editor.org/rfc/rfc8174">https://www.rfc-editor.org/rfc/rfc8174</a>&gt;</span>. </dd>
+<dd class="break"></dd>
+<dt id="RFC9110">[RFC9110]</dt>
+        <dd>
+<span class="refAuthor">Fielding, R., Ed.</span>, <span class="refAuthor">Nottingham, M., Ed.</span>, and <span class="refAuthor">J. Reschke, Ed.</span>, <span class="refTitle">"HTTP Semantics"</span>, <span class="seriesInfo">STD 97</span>, <span class="seriesInfo">RFC 9110</span>, <span class="seriesInfo">DOI 10.17487/RFC9110</span>, <time datetime="2022-06" class="refDate">June 2022</time>, <span>&lt;<a href="https://www.rfc-editor.org/rfc/rfc9110">https://www.rfc-editor.org/rfc/rfc9110</a>&gt;</span>. </dd>
+<dd class="break"></dd>
+<dt id="RFC9421">[RFC9421]</dt>
+        <dd>
+<span class="refAuthor">Backman, A., Ed.</span>, <span class="refAuthor">Richer, J., Ed.</span>, and <span class="refAuthor">M. Sporny</span>, <span class="refTitle">"HTTP Message Signatures"</span>, <span class="seriesInfo">RFC 9421</span>, <span class="seriesInfo">DOI 10.17487/RFC9421</span>, <time datetime="2024-02" class="refDate">February 2024</time>, <span>&lt;<a href="https://www.rfc-editor.org/rfc/rfc9421">https://www.rfc-editor.org/rfc/rfc9421</a>&gt;</span>. </dd>
+<dd class="break"></dd>
+<dt id="RFC9530">[RFC9530]</dt>
+        <dd>
+<span class="refAuthor">Polli, R.</span> and <span class="refAuthor">L. Pardue</span>, <span class="refTitle">"Digest Fields"</span>, <span class="seriesInfo">RFC 9530</span>, <span class="seriesInfo">DOI 10.17487/RFC9530</span>, <time datetime="2024-02" class="refDate">February 2024</time>, <span>&lt;<a href="https://www.rfc-editor.org/rfc/rfc9530">https://www.rfc-editor.org/rfc/rfc9530</a>&gt;</span>. </dd>
+<dd class="break"></dd>
+<dt id="RFC9577">[RFC9577]</dt>
+        <dd>
+<span class="refAuthor">Pauly, T.</span>, <span class="refAuthor">Valdez, S.</span>, and <span class="refAuthor">C. A. Wood</span>, <span class="refTitle">"The Privacy Pass HTTP Authentication Scheme"</span>, <span class="seriesInfo">RFC 9577</span>, <span class="seriesInfo">DOI 10.17487/RFC9577</span>, <time datetime="2024-06" class="refDate">June 2024</time>, <span>&lt;<a href="https://www.rfc-editor.org/rfc/rfc9577">https://www.rfc-editor.org/rfc/rfc9577</a>&gt;</span>. </dd>
+<dd class="break"></dd>
+<dt id="RFC9578">[RFC9578]</dt>
+      <dd>
+<span class="refAuthor">Celi, S.</span>, <span class="refAuthor">Davidson, A.</span>, <span class="refAuthor">Valdez, S.</span>, and <span class="refAuthor">C. A. Wood</span>, <span class="refTitle">"Privacy Pass Issuance Protocols"</span>, <span class="seriesInfo">RFC 9578</span>, <span class="seriesInfo">DOI 10.17487/RFC9578</span>, <time datetime="2024-06" class="refDate">June 2024</time>, <span>&lt;<a href="https://www.rfc-editor.org/rfc/rfc9578">https://www.rfc-editor.org/rfc/rfc9578</a>&gt;</span>. </dd>
+<dd class="break"></dd>
+</dl>
+</section>
+</div>
+<div id="sec-informative-references">
+<section id="section-14.2">
+        <h3 id="name-informative-references">
+<a href="#section-14.2" class="section-number selfRef">14.2. </a><a href="#name-informative-references" class="section-name selfRef">Informative References</a>
+        </h3>
+<dl class="references">
+<dt id="AAP-CLAIMS">[AAP-CLAIMS]</dt>
+        <dd>
+<span class="refAuthor">Drapeau, R.</span> and <span class="refAuthor">D. Pettersson</span>, <span class="refTitle">"Identity Claims for the Agent Attestation Protocol"</span>, <span>&lt;<a href="https://agentic-protocols.github.io/agentic-attestation-protocol/draft-aap-identity-claims.html">https://agentic-protocols.github.io/agentic-attestation-protocol/draft-aap-identity-claims.html</a>&gt;</span>. </dd>
+<dd class="break"></dd>
+<dt id="AAP-LOCAL">[AAP-LOCAL]</dt>
+        <dd>
+<span class="refAuthor">Drapeau, R.</span> and <span class="refAuthor">D. Pettersson</span>, <span class="refTitle">"Local Agent Profiles for the Agent Attestation Protocol"</span>, <span>&lt;<a href="https://agentic-protocols.github.io/agentic-attestation-protocol/draft-aap-local-agent.html">https://agentic-protocols.github.io/agentic-attestation-protocol/draft-aap-local-agent.html</a>&gt;</span>. </dd>
+<dd class="break"></dd>
+<dt id="I-D.ietf-httpapi-idempotency-key-header">[I-D.ietf-httpapi-idempotency-key-header]</dt>
+        <dd>
+<span class="refAuthor">Jena, J.</span> and <span class="refAuthor">S. Dalal</span>, <span class="refTitle">"The Idempotency-Key HTTP Header Field"</span>, <span class="refContent">Work in Progress</span>, <span class="seriesInfo">Internet-Draft, draft-ietf-httpapi-idempotency-key-header-07</span>, <time datetime="2025-10-15" class="refDate">15 October 2025</time>, <span>&lt;<a href="https://datatracker.ietf.org/doc/html/draft-ietf-httpapi-idempotency-key-header-07">https://datatracker.ietf.org/doc/html/draft-ietf-httpapi-idempotency-key-header-07</a>&gt;</span>. </dd>
+<dd class="break"></dd>
+<dt id="I-D.ietf-privacypass-batched-tokens">[I-D.ietf-privacypass-batched-tokens]</dt>
+        <dd>
+<span class="refAuthor">Robert, R.</span>, <span class="refAuthor">Wood, C. A.</span>, and <span class="refAuthor">T. Meunier</span>, <span class="refTitle">"Batched Token Issuance Protocol"</span>, <span class="refContent">Work in Progress</span>, <span class="seriesInfo">Internet-Draft, draft-ietf-privacypass-batched-tokens-08</span>, <time datetime="2026-05-04" class="refDate">4 May 2026</time>, <span>&lt;<a href="https://datatracker.ietf.org/doc/html/draft-ietf-privacypass-batched-tokens-08">https://datatracker.ietf.org/doc/html/draft-ietf-privacypass-batched-tokens-08</a>&gt;</span>. </dd>
+<dd class="break"></dd>
+<dt id="I-D.ietf-privacypass-public-metadata-issuance">[I-D.ietf-privacypass-public-metadata-issuance]</dt>
+        <dd>
+<span class="refAuthor">Hendrickson, S.</span> and <span class="refAuthor">C. A. Wood</span>, <span class="refTitle">"Privacy Pass Issuance Protocols with Public Metadata"</span>, <span class="refContent">Work in Progress</span>, <span class="seriesInfo">Internet-Draft, draft-ietf-privacypass-public-metadata-issuance-03</span>, <time datetime="2026-05-13" class="refDate">13 May 2026</time>, <span>&lt;<a href="https://datatracker.ietf.org/doc/html/draft-ietf-privacypass-public-metadata-issuance-03">https://datatracker.ietf.org/doc/html/draft-ietf-privacypass-public-metadata-issuance-03</a>&gt;</span>. </dd>
+<dd class="break"></dd>
+<dt id="I-D.jms-mole-architecture">[I-D.jms-mole-architecture]</dt>
+        <dd>
+<span class="refAuthor">Schlesinger, S.</span>, <span class="refAuthor">Jackson, D.</span>, and <span class="refAuthor">T. Meunier</span>, <span class="refTitle">"Moderation of unLinkable Endorsements (MoLE) Architecture"</span>, <span class="refContent">Work in Progress</span>, <span class="seriesInfo">Internet-Draft, draft-jms-mole-architecture-00</span>, <time datetime="2026-07-06" class="refDate">6 July 2026</time>, <span>&lt;<a href="https://datatracker.ietf.org/doc/html/draft-jms-mole-architecture-00">https://datatracker.ietf.org/doc/html/draft-jms-mole-architecture-00</a>&gt;</span>. </dd>
+<dd class="break"></dd>
+<dt id="I-D.jms-mole-protocols">[I-D.jms-mole-protocols]</dt>
+        <dd>
+<span class="refAuthor">Schlesinger, S.</span>, <span class="refAuthor">Jackson, D.</span>, and <span class="refAuthor">T. Meunier</span>, <span class="refTitle">"MoLE Protocols"</span>, <span class="refContent">Work in Progress</span>, <span class="seriesInfo">Internet-Draft, draft-jms-mole-protocols-00</span>, <time datetime="2026-07-06" class="refDate">6 July 2026</time>, <span>&lt;<a href="https://datatracker.ietf.org/doc/html/draft-jms-mole-protocols-00">https://datatracker.ietf.org/doc/html/draft-jms-mole-protocols-00</a>&gt;</span>. </dd>
+<dd class="break"></dd>
+<dt id="I-D.meunier-http-message-signatures-directory">[I-D.meunier-http-message-signatures-directory]</dt>
+        <dd>
+<span class="refAuthor">Meunier, T.</span> and <span class="refAuthor">S. Major</span>, <span class="refTitle">"HTTP Message Signatures Directory"</span>, <span class="refContent">Work in Progress</span>, <span class="seriesInfo">Internet-Draft, draft-meunier-http-message-signatures-directory-05</span>, <time datetime="2026-03-02" class="refDate">2 March 2026</time>, <span>&lt;<a href="https://datatracker.ietf.org/doc/html/draft-meunier-http-message-signatures-directory-05">https://datatracker.ietf.org/doc/html/draft-meunier-http-message-signatures-directory-05</a>&gt;</span>. </dd>
+<dd class="break"></dd>
+<dt id="I-D.meunier-web-bot-auth-architecture">[I-D.meunier-web-bot-auth-architecture]</dt>
+        <dd>
+<span class="refAuthor">Meunier, T.</span> and <span class="refAuthor">S. Major</span>, <span class="refTitle">"HTTP Message Signatures for automated traffic Architecture"</span>, <span class="refContent">Work in Progress</span>, <span class="seriesInfo">Internet-Draft, draft-meunier-web-bot-auth-architecture-05</span>, <time datetime="2026-03-02" class="refDate">2 March 2026</time>, <span>&lt;<a href="https://datatracker.ietf.org/doc/html/draft-meunier-web-bot-auth-architecture-05">https://datatracker.ietf.org/doc/html/draft-meunier-web-bot-auth-architecture-05</a>&gt;</span>. </dd>
+<dd class="break"></dd>
+<dt id="OIDC">[OIDC]</dt>
+        <dd>
+<span class="refAuthor">Sakimura, N.</span>, <span class="refAuthor">Bradley, J.</span>, <span class="refAuthor">Jones, M.</span>, <span class="refAuthor">de Medeiros, B.</span>, and <span class="refAuthor">C. Mortimore</span>, <span class="refTitle">"OpenID Connect Core 1.0"</span>, <time datetime="2014" class="refDate">2014</time>, <span>&lt;<a href="https://openid.net/specs/openid-connect-core-1_0.html">https://openid.net/specs/openid-connect-core-1_0.html</a>&gt;</span>. </dd>
+<dd class="break"></dd>
+<dt id="OIDC-Discovery">[OIDC-Discovery]</dt>
+        <dd>
+<span class="refAuthor">OpenID Foundation</span>, <span class="refTitle">"OpenID Connect Discovery 1.0"</span>, <span>&lt;<a href="https://openid.net/specs/openid-connect-discovery-1_0.html">https://openid.net/specs/openid-connect-discovery-1_0.html</a>&gt;</span>. </dd>
+<dd class="break"></dd>
+<dt id="RFC2606">[RFC2606]</dt>
+        <dd>
+<span class="refAuthor">Eastlake 3rd, D.</span> and <span class="refAuthor">A. Panitz</span>, <span class="refTitle">"Reserved Top Level DNS Names"</span>, <span class="seriesInfo">BCP 32</span>, <span class="seriesInfo">RFC 2606</span>, <span class="seriesInfo">DOI 10.17487/RFC2606</span>, <time datetime="1999-06" class="refDate">June 1999</time>, <span>&lt;<a href="https://www.rfc-editor.org/rfc/rfc2606">https://www.rfc-editor.org/rfc/rfc2606</a>&gt;</span>. </dd>
+<dd class="break"></dd>
+<dt id="RFC3553">[RFC3553]</dt>
+        <dd>
+<span class="refAuthor">Mealling, M.</span>, <span class="refAuthor">Masinter, L.</span>, <span class="refAuthor">Hardie, T.</span>, and <span class="refAuthor">G. Klyne</span>, <span class="refTitle">"An IETF URN Sub-namespace for Registered Protocol Parameters"</span>, <span class="seriesInfo">BCP 73</span>, <span class="seriesInfo">RFC 3553</span>, <span class="seriesInfo">DOI 10.17487/RFC3553</span>, <time datetime="2003-06" class="refDate">June 2003</time>, <span>&lt;<a href="https://www.rfc-editor.org/rfc/rfc3553">https://www.rfc-editor.org/rfc/rfc3553</a>&gt;</span>. </dd>
+<dd class="break"></dd>
+<dt id="RFC7523">[RFC7523]</dt>
+        <dd>
+<span class="refAuthor">Jones, M.</span>, <span class="refAuthor">Campbell, B.</span>, and <span class="refAuthor">C. Mortimore</span>, <span class="refTitle">"JSON Web Token (JWT) Profile for OAuth 2.0 Client Authentication and Authorization Grants"</span>, <span class="seriesInfo">RFC 7523</span>, <span class="seriesInfo">DOI 10.17487/RFC7523</span>, <time datetime="2015-05" class="refDate">May 2015</time>, <span>&lt;<a href="https://www.rfc-editor.org/rfc/rfc7523">https://www.rfc-editor.org/rfc/rfc7523</a>&gt;</span>. </dd>
+<dd class="break"></dd>
+<dt id="RFC8414">[RFC8414]</dt>
+        <dd>
+<span class="refAuthor">Jones, M.</span>, <span class="refAuthor">Sakimura, N.</span>, and <span class="refAuthor">J. Bradley</span>, <span class="refTitle">"OAuth 2.0 Authorization Server Metadata"</span>, <span class="seriesInfo">RFC 8414</span>, <span class="seriesInfo">DOI 10.17487/RFC8414</span>, <time datetime="2018-06" class="refDate">June 2018</time>, <span>&lt;<a href="https://www.rfc-editor.org/rfc/rfc8414">https://www.rfc-editor.org/rfc/rfc8414</a>&gt;</span>. </dd>
+<dd class="break"></dd>
+<dt id="RFC8628">[RFC8628]</dt>
+        <dd>
+<span class="refAuthor">Denniss, W.</span>, <span class="refAuthor">Bradley, J.</span>, <span class="refAuthor">Jones, M.</span>, and <span class="refAuthor">H. Tschofenig</span>, <span class="refTitle">"OAuth 2.0 Device Authorization Grant"</span>, <span class="seriesInfo">RFC 8628</span>, <span class="seriesInfo">DOI 10.17487/RFC8628</span>, <time datetime="2019-08" class="refDate">August 2019</time>, <span>&lt;<a href="https://www.rfc-editor.org/rfc/rfc8628">https://www.rfc-editor.org/rfc/rfc8628</a>&gt;</span>. </dd>
+<dd class="break"></dd>
+<dt id="RFC9449">[RFC9449]</dt>
+        <dd>
+<span class="refAuthor">Fett, D.</span>, <span class="refAuthor">Campbell, B.</span>, <span class="refAuthor">Bradley, J.</span>, <span class="refAuthor">Lodderstedt, T.</span>, <span class="refAuthor">Jones, M.</span>, and <span class="refAuthor">D. Waite</span>, <span class="refTitle">"OAuth 2.0 Demonstrating Proof of Possession (DPoP)"</span>, <span class="seriesInfo">RFC 9449</span>, <span class="seriesInfo">DOI 10.17487/RFC9449</span>, <time datetime="2023-09" class="refDate">September 2023</time>, <span>&lt;<a href="https://www.rfc-editor.org/rfc/rfc9449">https://www.rfc-editor.org/rfc/rfc9449</a>&gt;</span>. </dd>
+<dd class="break"></dd>
+<dt id="RFC9576">[RFC9576]</dt>
+      <dd>
+<span class="refAuthor">Davidson, A.</span>, <span class="refAuthor">Iyengar, J.</span>, and <span class="refAuthor">C. A. Wood</span>, <span class="refTitle">"The Privacy Pass Architecture"</span>, <span class="seriesInfo">RFC 9576</span>, <span class="seriesInfo">DOI 10.17487/RFC9576</span>, <time datetime="2024-06" class="refDate">June 2024</time>, <span>&lt;<a href="https://www.rfc-editor.org/rfc/rfc9576">https://www.rfc-editor.org/rfc/rfc9576</a>&gt;</span>. </dd>
+<dd class="break"></dd>
+</dl>
+</section>
+</div>
+</section>
+</div>
+<div id="appendix-a">
+<section id="appendix-A">
+      <h2 id="name-examples">
+<a href="#appendix-A" class="section-number selfRef">Appendix A. </a><a href="#name-examples" class="section-name selfRef">Examples</a>
+      </h2>
+<p id="appendix-A-1">This appendix is informative.<a href="#appendix-A-1" class="pilcrow">¶</a></p>
+<p id="appendix-A-2">TODO: End-to-end example flow: anonymous front-door admission with no identity — challenge, redemption, offline verification, session establishment.<a href="#appendix-A-2" class="pilcrow">¶</a></p>
+</section>
+</div>
+<div id="authors-addresses">
+<section id="appendix-B">
+      <h2 id="name-authors-addresses">
+<a href="#name-authors-addresses" class="section-name selfRef">Authors' Addresses</a>
+      </h2>
+<address class="vcard">
+        <div dir="auto" class="left"><span class="fn nameRole">Ryan Drapeau</span></div>
+<div dir="auto" class="left"><span class="org">Stripe</span></div>
+<div class="email">
+<span>Email:</span>
+<a href="mailto:drapeau@stripe.com" class="email">drapeau@stripe.com</a>
+</div>
+</address>
+<address class="vcard">
+        <div dir="auto" class="left"><span class="fn nameRole">David Pettersson</span></div>
+<div dir="auto" class="left"><span class="org">Shopify</span></div>
+<div class="email">
+<span>Email:</span>
+<a href="mailto:david.pettersson@shopify.com" class="email">david.pettersson@shopify.com</a>
+</div>
+</address>
+</section>
+</div>
+<script>const toc = document.getElementById("toc");
+toc.querySelector("h2").addEventListener("click", e => {
+  toc.classList.toggle("active");
+});
+toc.querySelector("nav").addEventListener("click", e => {
+  toc.classList.remove("active");
+});
+</script>
+</body>
+</html>
