@@ -1,0 +1,24 @@
+lockfileVersion: '9.0'
+
+settings:
+  autoInstallPeers: true
+  excludeLinksFromLockfile: false
+
+importers:
+
+  .:
+    dependencies:
+      aasvg:
+        specifier: 0.4.3
+        version: 0.4.3
+
+packages:
+
+  aasvg@0.4.3:
+    resolution: {integrity: sha512-n9I0JklitjU1xVtzQuaHJyUJpI38Q+xbxfeHr//eDHvqCVTOOs3tKN+bqeAfde5owZC/BIrBAg8yKaiB8lkJwA==, tarball: https://registry.npmjs.org/aasvg/-/aasvg-0.4.3.tgz}
+    engines: {node: '>=10'}
+    hasBin: true
+
+snapshots:
+
+  aasvg@0.4.3: {}
