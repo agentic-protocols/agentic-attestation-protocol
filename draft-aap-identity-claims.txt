@@ -1,0 +1,1788 @@
+
+
+
+
+Network Working Group                                         R. Drapeau
+Internet-Draft                                                    Stripe
+Intended status: Standards Track                           D. Pettersson
+Expires: 13 February 2027                                        Shopify
+                                                          12 August 2026
+
+
+           Identity Claims for the Agent Attestation Protocol
+                    draft-aap-identity-claims-latest
+
+Abstract
+
+   This document defines the identity claims module of the Agent
+   Attestation Protocol (AAP).  The AAP core admits an agent
+   anonymously: the Agent Attestation Token (AAT) proves an accountable
+   principal stands behind the agent while carrying no fact about
+   anyone.  When an interaction needs a fact about the principal — a
+   verified email to open an account, an address to ship to, an age to
+   clear a gate — this module supplies it: the service requests a
+   specific claim, the principal's consent gates the disclosure, and the
+   agent brokers the answer.
+
+   Claims travel on two lanes: a pre-provisioned, holder-presented lane
+   the issuer is blind to, and an issuer-mediated lane that mints
+   audience-bound claims tokens under live consent.  The principal's
+   standing disclosure policy, held at the issuer, governs both lanes
+   and selects between them.  This module layers on the AAP core and
+   requires it.
+
+Status of This Memo
+
+   This Internet-Draft is submitted in full conformance with the
+   provisions of BCP 78 and BCP 79.
+
+   Internet-Drafts are working documents of the Internet Engineering
+   Task Force (IETF).  Note that other groups may also distribute
+   working documents as Internet-Drafts.  The list of current Internet-
+   Drafts is at https://datatracker.ietf.org/drafts/current/.
+
+   Internet-Drafts are draft documents valid for a maximum of six months
+   and may be updated, replaced, or obsoleted by other documents at any
+   time.  It is inappropriate to use Internet-Drafts as reference
+   material or to cite them other than as "work in progress."
+
+   This Internet-Draft will expire on 13 February 2027.
+
+Copyright Notice
+
+   Copyright (c) 2026 IETF Trust and the persons identified as the
+   document authors.  All rights reserved.
+
+   This document is subject to BCP 78 and the IETF Trust's Legal
+   Provisions Relating to IETF Documents (https://trustee.ietf.org/
+   license-info) in effect on the date of publication of this document.
+   Please review these documents carefully, as they describe your rights
+   and restrictions with respect to this document.  Code Components
+   extracted from this document must include Revised BSD License text as
+   described in Section 4.e of the Trust Legal Provisions and are
+   provided without warranty as described in the Revised BSD License.
+
+Table of Contents
+
+   1.  Introduction
+     1.1.  Scope
+     1.2.  Relationship to the AAP Core
+     1.3.  Requirements Language
+     1.4.  Terminology
+   2.  Overview
+   3.  Pre-Provisioned Disclosure
+   4.  Issuer-Mediated Disclosure
+   5.  Consent
+   6.  Asynchronous Approval
+   7.  Disclosure Policy
+     7.1.  Policy Behavior and Constraints
+     7.2.  Sensitivity Tiers
+     7.3.  Policy Representation and Resolution
+   8.  Non-Adopting Verifiers
+   9.  Discovery
+     9.1.  Issuer Metadata Members
+       9.1.1.  Claims Keys
+     9.2.  Claims Capability
+       9.2.1.  Claim Vocabulary and References
+     9.3.  Requester Keys
+       9.3.1.  Encrypting the Claims Token to the Service
+   10. Relationship to Existing Work
+   11. Privacy Considerations
+   12. Security Considerations
+   13. IANA Considerations
+   14. Open Items
+   15. Acknowledgments
+   16. References
+     16.1.  Normative References
+     16.2.  Informative References
+   Appendix A.  Examples
+   Authors' Addresses
+
+1.  Introduction
+
+   The AAP core ([AAP-CORE]) makes the front door anonymous: a service
+   admits an agent on the accountability bit alone, and the credential
+   presented there carries no fact about the principal and no handle
+   that resolves to one.  Identity is a separate matter, needed only on
+   the interactions that genuinely call for it.  This document defines
+   that separate matter.
+
+   When a service needs a specific fact — and only then — it asks the
+   agent for that fact, naming what it needs and why.  The agent answers
+   on the principal's behalf in one of two ways, determined by the
+   principal's standing policy for that fact: it presents a credential
+   it already holds, with the issuer not contacted at all, or it fetches
+   a freshly minted, audience-bound claims token, released under the
+   principal's standing grant or a live approval as that policy
+   dictates.  Either way the service receives an issuer-signed fact
+   bound to its own request — a verified claim, not a self-asserted form
+   field, and not standing access to anything beyond what it asked for.
+
+   Because the AAT is anonymous and carries no resolvable handle, the
+   service cannot obtain claims by calling the issuer on its own: it
+   holds nothing the issuer can resolve to a person.  The agent, which
+   alone holds a standing relationship with the issuer, brokers every
+   disclosure.  This is a deliberate consequence of the anonymous front
+   door: removing the resolvable handle removes the direct service-to-
+   issuer flow, and identity moves to lanes the agent mediates.
+
+1.1.  Scope
+
+   This document defines: the claims-required challenge a service uses
+   to request claims; the two disclosure lanes and their wire formats;
+   the consent model and asynchronous approval; the principal's
+   disclosure policy; the discovery surfaces for claims (issuer metadata
+   members, claims capability, requester keys); and the encryption
+   profile that keeps claim values out of the brokering agent's hands.
+
+1.2.  Relationship to the AAP Core
+
+   This module layers on the AAP core and does not stand alone: an
+   implementation of this document MUST implement [AAP-CORE].  The
+   module uses the core's platform enrollment, linking grant, and agent
+   key unchanged, and adds no requirement to the core's attestation
+   layer — an AAT never carries a claim ([AAP-CORE]).
+
+   The module amends the core in one place.  The core's linking ceremony
+   establishes the standing grant under which agents act; because the
+   anonymous front door leaves the issuer no later handle to attach
+   preferences to, an issuer that offers this module MUST capture the
+   principal's standing disclosure policy (Section 7) at or before
+   linking, at its own surfaces.  This is the module amendment
+   anticipated by the core's linking section ([AAP-CORE]).
+
+   An issuer MAY offer either lane of this module, both, or neither
+   (conforming to the core alone).  An issuer that offers only the pre-
+   provisioned lane is *wallet-only*: it provisions a wallet of claims
+   and never runs an interactive approval or an issuer-mediated
+   disclosure.  Because that lane enforces consent at minting, a wallet-
+   only issuer serves only claims releasable under a standing grant and
+   free of the agent-blind condition (Section 7.1); its metadata names a
+   credential_endpoint and no claims_endpoint (Section 9.1).
+
+1.3.  Requirements Language
+
+   The key words "MUST", "MUST NOT", "REQUIRED", "SHALL", "SHALL NOT",
+   "SHOULD", "SHOULD NOT", "RECOMMENDED", "NOT RECOMMENDED", "MAY", and
+   "OPTIONAL" in this document are to be interpreted as described in BCP
+   14 [RFC2119] [RFC8174] when, and only when, they appear in all
+   capitals, as shown here.
+
+1.4.  Terminology
+
+   The terms Principal, Agent, Agent Platform, Issuer, Verifier, Edge,
+   Service, and AAT are used as defined in [AAP-CORE].  This document
+   adds:
+
+   *  Requester: a party that consumes identity claims about the
+      principal — in this revision, the Service, since the agent brokers
+      every claim (Section 2).
+
+   *  Claims credential: a pre-provisioned, holder-presented credential
+      carrying identity claims (Section 3).
+
+   *  Claims token: an audience-bound credential carrying identity
+      claims, minted per request by the issuer (Section 4).
+
+   *  Disclosure policy: the principal's standing disclosure
+      preferences, held and evaluated by the issuer (Section 7).
+
+   Examples use domain names reserved by [RFC2606] and identifiers that
+   are not registered assignments.
+
+2.  Overview
+
+   This section is non-normative.
+
+   A service that needs to know something about the principal (to match
+   an account, put a name on an order, or check an age requirement)
+   obtains exactly the claims it needs, under the principal's consent,
+   and never from the AAT.  Which claims an issuer can attest, and the
+   shared vocabulary their names are drawn from, is defined in Claims
+   Capability (Section 9.2); a service consults it to decide what to ask
+   for before it sends a claims-required challenge.
+
+   This document defines two lanes.  The principal's disclosure policy
+   (Section 7) selects between them: a claim released under a standing
+   grant can travel either lane, and a claim that requires approval per
+   use, or that the agent must not see, travels the issuer-mediated
+   lane.
+
+   *  *Pre-provisioned disclosure* (Section 3): the issuer mints holder-
+      bound credentials into the agent's wallet ahead of use; at use the
+      agent presents a selective disclosure directly to the service,
+      with the issuer not in the loop.  Fast (no issuer call) and
+      issuer-blind, at the cost that consent is fixed at issuance and
+      the agent handles the values.  The lane for standing facts whose
+      handling tolerates the agent holding the value.
+
+   *  *Issuer-mediated disclosure* (Section 4): the agent brokers a live
+      call to the issuer, which reviews who is asking and why, runs the
+      principal's approval where required, and returns a fresh audience-
+      bound claims token the agent relays.  The issuer sees the
+      disclosure — the price paid for live consent, immediate
+      revocation, and the ability to keep the value out of the agent's
+      hands (the token MAY be encrypted to the service).  The lane for
+      facts whose policy requires per-use approval, an enumerated
+      audience, or agent-blind handling.
+
+   Both lanes share one consent model (Section 5) and, on the issuer-
+   mediated lane, one disclosure log.  Sensitivity is a common input to
+   the policy that selects the lane, and grouping claims into
+   sensitivity tiers (Section 7.2) is one way an issuer authors that
+   policy; the lane-selection rule itself is in Section 7.1.
+
+     Agent (platform)       Issuer     Service / Verifier
+           AP                 I                S
+            |                 |                |
+   [  admission per the AAP core; verifier session established  ]
+            |<~~~~~~~~~~~~~~~~+~~(1)~~~~~~~~~~~|
+   [   ALT: pre-provisioned lane (policy: standing grant)       ]
+            |--(2)------------+--------------->|
+   [   ELSE: issuer-mediated lane (policy: approval or blind)   ]
+            |--(3)----------->|                |
+            |<~(4)~~~~~~~~~~~~|                |
+            |--(5)------------+--------------->|
+   [                        END ALT                             ]
+
+   Legend: ----> message; ~~~~> response
+
+   Messages:
+   (1) S ~> AP: claims-required (aud, nonce, purpose)
+   (2) AP -> S: credential the agent already holds
+       (issuer not contacted)
+   (3) AP -> I: relay signed claims request (live consent)
+   (4) I ~> AP: aud-bound claims token
+   (5) AP -> S: claims token
+
+       Figure 1: Disclosure, only when needed: the service challenges
+        for claims and the agent answers on the lane the principal's
+                              policy selects.
+
+3.  Pre-Provisioned Disclosure
+
+   For facts releasable under a standing disclosure grant, the issuer
+   mints a holder-bound credential into the agent's wallet ahead of use,
+   and the agent presents a selective disclosure of it directly to the
+   service without contacting the issuer.
+
+   The credential is an SD-JWT-VC ([I-D.ietf-oauth-sd-jwt-vc], built on
+   SD-JWT [RFC9901]): an issuer-signed credential whose individual
+   claims are selectively disclosable, bound to a holder key in its cnf
+   ([RFC7800]).  On this lane that cnf MUST use the jwk confirmation
+   method, carrying the holder key as a JWK.  The holder key MUST be an
+   agent key the agent controls; binding it to the agent's Web Bot Auth
+   key ([AAP-CORE]) is RECOMMENDED, so the same key that proves the AAT
+   and signs requests also presents the credential.  That coincidence is
+   a convenience, not a dependency: the KB-JWT is carried whether or not
+   the two keys are the same, so neither key is pinned to the other.
+   Provisioning happens under the linking grant and the standing
+   disclosure grant; the issuer mints only claims that resolve to allow
+   under the principal's disclosure policy (Section 7).  An issuer MUST
+   include the exp claim in the SD-JWT-VC; the chosen lifetime bounds
+   how long the credential remains presentable after the principal
+   changes their disclosure policy.
+
+   An issuer MUST include the vct claim SD-JWT-VC requires, and MUST NOT
+   make it selectively disclosable.  Its value names the credential
+   type: a collision-resistant URI under the issuer's control, versioned
+   so the type can evolve, for example
+   https://idp.example/credentials/aap/v1.  This revision defines no
+   Type Metadata document for that type (Section 14); vct is a bare type
+   identifier.  It is distinct from claims_supported (Section 9.2):
+   claims_supported is an issuer-level capability hint, not credential-
+   type metadata.
+
+   A service signals which claims it needs with a presentation request,
+   and the agent answers from its wallet.  Each entry of claims is a
+   claim reference (Section 9.2).  The service MUST supply an aud naming
+   itself and a nonce; the nonce MUST be unpredictable, MUST be accepted
+   only once, and MUST expire, because it is the freshness the KB-JWT
+   binds to and this lane keeps no seen-credential cache.
+
+   HTTP/1.1 401 Unauthorized
+   WWW-Authenticate: Identity-Presentation
+   Content-Type: application/problem+json
+
+   {
+     "type": "urn:aap:claims-required",
+     "aud": "https://merchant.example",
+     "nonce": "v8f3Qk...",
+     "claims": ["email", "email_verified"],
+     "purpose": "Put a contact on the order",
+     "formats": ["dc+sd-jwt"],
+     "trusted_issuers": ["https://idp.example"]
+   }
+
+POST /checkout HTTP/1.1
+Host: merchant.example
+Authorization: PrivateToken token=<base64url Token>
+Identity-Presentation: <issuer-jwt>~<D:email>~<D:email_verified>~<KB-JWT>
+Signature-Input: agent=("@method" "@authority" "@path" "authorization" \
+  "identity-presentation" "content-digest");created=1715400100; \
+  expires=1715400160;keyid="agent_kid_b64url...";tag="web-bot-auth"
+Signature: agent=:<signature by the agent key>:
+...
+
+Figure 2: Pre-provisioned disclosure.  The agent presents a selective
+   disclosure of a wallet credential; the issuer is not contacted.
+    <issuer-jwt> is the issuer-signed credential, <D:...> are the
+disclosed claims, <KB-JWT> binds the presentation to this service and
+ nonce.  The Authorization header and Web Bot Auth signature are the
+                    AAP core's admission surface.
+
+   The presentation rides the admission surface the core defines: the
+   Authorization header carries the AAT redemption ([RFC9577]), and the
+   Identity-Presentation field travels beside it.  The request's Web Bot
+   Auth signature ([RFC9421]) MUST cover the Identity-Presentation field
+   when the request carries one, so the presentation cannot be lifted
+   into a different signed request.  This extends the core's minimum
+   signature coverage ([AAP-CORE]), which admits additional covered
+   fields.
+
+   The service MUST verify all of the following, with no issuer call,
+   failing closed at the first failure: (1) the issuer signature over
+   the credential, under the issuer's published keys (Section 9.1.1);
+   (2) that the credential carries an exp claim and that the current
+   time is before exp; (3) each disclosed claim's digest against the
+   credential's _sd set; (4) the key-binding proof, following the steps
+   of Section 7.3 of [RFC9901]: a KB-JWT is present as the final tilde-
+   separated component, its typ is kb+jwt, its alg is one the verifier
+   accepts and is not none, its signature verifies under the key in the
+   credential's cnf.jwk, its aud and nonce match the challenge, its iat
+   is within a window the verifier accepts, and its sd_hash equals the
+   value the verifier recomputes over the presentation as received.  AAP
+   tightens two of those steps: the aud comparison is an exact string
+   match, and a nonce is accepted only once.  The sd_hash comparison is
+   what binds the disclosed set; without it the other checks admit a set
+   the holder never committed to.
+
+   The agent serializes the presentation as the SD-JWT+KB serialization
+   of Section 4 of [RFC9901] — the issuer-signed JWT, a tilde, each
+   selected disclosure followed by a tilde, then the key-binding JWT —
+   and MUST include that KB-JWT, with the header parameters and payload
+   claims Section 4.3 of [RFC9901] requires, secured by the key in the
+   credential's cnf (Section 2.2.2.3 of [I-D.ietf-oauth-sd-jwt-vc]).
+   The sd_hash is computed as Section 4.3.1 of [RFC9901] specifies: over
+   the US-ASCII bytes of the serialization up to and including the tilde
+   preceding the KB-JWT, under the hash algorithm the credential's
+   _sd_alg names, or sha-256 where it is absent.  An agent MUST forward
+   each disclosure exactly as the issuer produced it, since a re-encoded
+   disclosure no longer matches its digest.
+
+   Key binding is a matter of verifier policy in SD-JWT (Section 4.3.2
+   of [RFC9901]); AAP fixes it for this lane, so the key-binding check
+   above is unconditional and a stripped KB-JWT cannot downgrade the
+   presentation to a bare SD-JWT (Section 9.5 of [RFC9901]).  The
+   request's Web Bot Auth signature is not a substitute: it binds
+   transport, not the disclosed set, which a bare SD-JWT's can be added
+   to or removed from and still verify (Section 9.10 of [RFC9901]).  A
+   deployment that treats it as the key-binding proof by private
+   agreement is outside this profile.
+
+   The trade is explicit: the issuer is not in the loop, so the
+   disclosure is unlinkable to it, but consent was decided when the
+   credential was minted (the standing disclosure grant), revocation
+   reaches only as far as the credential's exp, and the agent
+   necessarily holds the claim values.  Accordingly, this lane suits
+   facts whose handling tolerates issuance-time consent and the agent
+   holding the value — an issuer's lighter tiers (Section 7.2).  An
+   issuer MUST NOT provision on this lane a claim that requires per-use
+   approval, an enumerated audience, or agent-blind handling
+   (Section 7.1).
+
+   The security and privacy consequences of delegating use-time
+   disclosure decisions to the agent are discussed in Section 12 and
+   Section 11.
+
+   Revocation on this lane is expiry plus re-issuance: no status list or
+   other post-issuance status mechanism is defined, and a minted
+   credential remains presentable until its exp.  An issuer SHOULD keep
+   credential lifetimes short.  An agent SHOULD provision credentials in
+   small pools ahead of use and SHOULD present each credential at most
+   once, discarding it after presentation, as it does AATs ([AAP-CORE]);
+   single-use presentation keeps two presentations from being matched
+   through the credential (Section 11).  Single-use is agent-side
+   discipline, not a verified property: a service maintains no seen-
+   credential cache on this lane.
+
+   The agent re-provisions credentials before they expire, under the
+   standing linking and disclosure grants, as it refills the AAT pool
+   ([AAP-CORE]).  Because the issuer re-evaluates the current disclosure
+   policy at each provisioning, a policy change takes effect at the next
+   refresh; the credential's exp therefore bounds how long a superseded
+   policy can still be presented.
+
+4.  Issuer-Mediated Disclosure
+
+   For a fact the principal's policy does not release under a standing
+   grant, or that the agent must not see, the agent brokers a live call
+   to the issuer.  The issuer reviews who is asking and why, applies the
+   standing disclosure grant or obtains the principal's interactive
+   approval (Section 5, Section 6), and returns an audience-bound claims
+   token that the agent relays to the service.  The agent is a courier:
+   it cannot forge or alter the token, and where the issuer encrypts the
+   token to the service the agent cannot read it.
+
+      Service            Agent         Issuer (IDP)       Principal
+         S                 A                 I               PR
+         |                 |                 |                |
+         |--(1)----------->|                 |                |
+         |                 |--(2)----------->|                |
+         |                 |                 |--(3)--+        |
+         |                 |                 |<------+        |
+   [                     OPT: beyond standing grant                    ]
+         |                 |                 |--(4)---------->|
+         |                 |                 |<-(5)-----------|
+   [                              END OPT                              ]
+         |                 |<~(6)~~~~~~~~~~~~|                |
+         |<-(7)------------|                 |                |
+         |--(8)--+         |                 |                |
+         |<------+         |                 |                |
+
+   Legend: ----> message; ~~~~> response; +--+ self-call
+
+   Messages:
+   (1) S -> A: need {address}; aud=Service; nonce=N; purpose=P
+   (2) A -> I: relay service's signed challenge:
+       claims, aud=Service, nonce=N, purpose=P
+   (3) I -> I: verify challenge signature; review;
+       check standing grant
+   (4) I -> PR: approve disclosure to Service?
+   (5) PR -> I: approve
+   (6) I ~> A: claims token (aud=Service, nonce=N;
+       MAY be encrypted, MUST if agent-blind)
+   (7) A -> S: relay claims token
+   (8) S -> S: decrypt (if encrypted);
+       verify issuer sig + aud==self + nonce
+
+       Figure 3: Issuer-mediated disclosure.  The agent brokers; the
+        issuer decides and signs; the binding (aud, nonce) makes the
+          courier untrustworthy but harmless.  The issuer sees the
+      disclosure, which is what lets it enforce consent live, log it,
+                                and revoke.
+
+   The service signals its need exactly as in the pre-provisioned lane
+   (urn:aap:claims-required), and additionally MUST supply a nonce,
+   SHOULD supply a purpose, and MUST sign the challenge with a key
+   resolvable from its aud origin (Section 9.3) — because the agent
+   relays these fields to the issuer, and the issuer MUST NOT take the
+   requester's identity, audience, or purpose on the agent's say-so.
+   The agent calls the issuer's claims endpoint (Section 9.1)
+   authenticating under the linking grant and relays the service's
+   signed challenge verbatim.  The issuer MUST, failing closed at the
+   first failure:
+
+   1.  Authenticate the agent under an active linking grant and resolve
+       the principal and their disclosure policy (Section 7).  (There is
+       no session_id; the linking grant is what identifies the principal
+       here.)
+
+   2.  Verify the service's signature over the relayed challenge and
+       that the signing key resolves from the named aud, so the aud,
+       nonce, claims, and purpose are the service's own and not the
+       agent's.  A challenge that does not verify is rejected.
+
+   3.  Resolve the principal's disclosure policy for each requested
+       claim and the named aud (Section 7): on allow, release the claim;
+       on ask, obtain interactive approval (Section 5, Section 6) and
+       release the claim only on approval; on deny, withhold it.
+
+   4.  Return the outcome the released set selects (below).  Where that
+       outcome is a claims token, mint it bound to aud and nonce and
+       sign it with a key from the issuer's published set.  The issuer
+       MAY encrypt the token to the service's public key so the relaying
+       agent cannot read the values, and MUST do so where the agent-
+       blind condition applies (Section 7.1); the resolution and JWE
+       profile are in Section 9.3.1.
+
+   A requested claim is *released* when the issuer can attest it, holds
+   a value for this principal, and the policy resolved to allow or to an
+   approved ask.  Otherwise it is *withheld*. The released set alone
+   selects the response, following the best-effort subset semantics of
+   OIDC UserInfo ([OIDC], Section 5.3.2), under which a claim the issuer
+   does not return is absent and its absence is not an error:
+
+   *  *Something released.* The issuer MUST return a claims token
+      carrying exactly the released claims.  A withheld claim MUST be
+      absent from the token rather than null or empty, and the response
+      MUST NOT indicate which claims were withheld or why.
+
+   *  *Nothing released, every claim withheld for a consent reason*
+      (deny, or an approval the principal declined).  The issuer MUST
+      fail closed with urn:aap:consent-required, or with
+      urn:aap:approval-denied where the request went through an approval
+      step (Section 6).
+
+   *  *Nothing released, at least one claim withheld for a non-consent
+      reason* (the issuer cannot attest the claim, or holds no value for
+      this principal).  The issuer MUST return a claims token carrying
+      none of the requested claims.
+
+   Uniform omission is what keeps a claims response from becoming a per-
+   principal probe: from a token the service cannot tell cannot-attest,
+   no-value, denied, and declined apart.  Which claim types an issuer
+   can attest at all is an issuer-level property, not a fact about the
+   principal, and a service can read it from claims_supported
+   (Section 9.2) before it challenges.
+
+   The claims token is a signed JWT (typ aap-claims+jwt) whose aud is
+   single-valued and equals the service, with a nonce matching the
+   challenge and a short exp:
+
+   {
+     "iss": "https://idp.example",
+     "aud": "https://merchant.example",
+     "iat": 1715400100,
+     "exp": 1715400400,
+     "nonce": "v8f3Qk...",
+     "address": { "country": "CA", "postal_code": "..." }
+   }
+
+      Figure 4: A claims token (decoded).  Audience- and nonce-bound;
+         carries no resolvable session handle.  A copy that escapes
+     carries its uselessness with it: it is inert to any party but the
+                                 named aud.
+
+   The service MUST verify the issuer signature, aud equal to itself,
+   the nonce matches its challenge, and the validity window, failing
+   closed at the first failure.  A valid token can carry fewer claims
+   than were requested, or none of them; the service compares the
+   returned claims against its requirements and decides whether to
+   proceed, re-challenge, or refuse.  For claims that require evidence
+   of how they were verified, the issuer MAY return the verified_claims
+   structure of [OIDC-IA].  There is no direct service-to-issuer variant
+   of this lane: the service has no handle to present, so the agent's
+   brokering is not optional but structural.
+
+5.  Consent
+
+   Consent is enforced at disclosure, and every disclosure MUST be
+   covered by the principal's disclosure policy (Section 7), which
+   resolves each request to allow (a standing disclosure grant, released
+   without contacting the principal), ask (interactive approval at
+   request time), or deny.  On the pre-provisioned lane the policy is
+   enforced at minting (the issuer mints only claims that resolve to
+   allow); on the issuer-mediated lane it is enforced per request.  The
+   wildcard bound on what may be released under a standing grant, and
+   the agent-attenuation and agent-blind constraints, are defined in
+   Section 7.
+
+   An interactive approval is obtained at request time on the issuer-
+   mediated lane: before disclosing, the issuer MUST present to the
+   principal the requester's identity, the specific claims, and the
+   stated purpose, and MUST disclose only on approval.  The pre-
+   provisioned lane cannot obtain interactive approval at use (the
+   issuer is not in the loop), which is the structural reason it is
+   confined to claims releasable under a standing grant.
+
+   The issuer is the disclosure chokepoint for the issuer-mediated lane
+   and logs every request there: the requester, the claims requested and
+   released, the basis (standing grant or approval), and when.  Denied
+   and parked requests belong in the log as much as granted ones.  The
+   issuer MUST honor revocation immediately on this lane: the principal
+   withdraws a grant and subsequent requests fail closed.  On the pre-
+   provisioned lane the issuer's visibility ends at minting, so the
+   principal's lever there is the credential's mandatory exp
+   (Section 3): a withdrawn grant stops re-issuance, and outstanding
+   credentials lapse at expiry.  This asymmetry is the cost of that
+   lane's issuer-blindness and MUST be disclosed to the principal when
+   the lane is used for a claim.
+
+   Because the pre-provisioned lane leaves the issuer with no record
+   past minting, an issuer MAY offer a *usage report* on that lane:
+   after a disclosure, the agent reports to the issuer's
+   usage_report_endpoint (Section 9.1) which claims it presented (by
+   claim reference, Section 9.2), to which audience (by origin), for
+   what stated purpose, and when.  A report MUST carry only those
+   fields.  The agent MUST NOT send a report unless the principal has
+   opted in and an active linking grant ([AAP-CORE]) stands.  The report
+   is self-asserted and unverifiable: a compromised or adversarial agent
+   can omit, delay, or falsify it, and reporting does not reduce the
+   agent's access to the disclosed value.  It is a compensating control
+   for the lane's minting-only visibility, not a guarantee, and it does
+   not replace keeping the value out of the agent's hands; encryption to
+   the service on the issuer-mediated lane (Section 4) remains the only
+   structural control on agent onward-use.  Reporting reintroduces the
+   issuer-side correlation the pre-provisioned lane is designed to avoid
+   (Section 11); at opt-in the issuer MUST disclose to the principal
+   that reporting converts the lane from issuer-blind to issuer-visible
+   for the claims it covers.
+
+6.  Asynchronous Approval
+
+   Interactive approval does not resolve at request time: the principal
+   approves on their own device, on their own schedule.  On the issuer-
+   mediated lane, a claims request awaiting approval cannot be answered
+   synchronously, so the issuer answers with a pending state and the
+   agent collects the result later.  The mechanics follow the Device
+   Authorization Grant polling state machine ([RFC8628]) and the
+   backchannel modes of [CIBA].
+
+   When a request requires approval, the issuer responds with Problem
+   Details ([RFC9457]) type urn:aap:approval-pending, carrying
+   request_id (a handle for this approval, distinct per outstanding
+   approval), interval (seconds between polls), and expires_in (the
+   approval window).  Completion reaches the agent by polling (the agent
+   re-submits with request_id on the interval; slow-down throttles;
+   approval returns the claims token, denial urn:aap:approval-denied, a
+   lapsed window urn:aap:approval-expired) or, for an agent that
+   registered a notification endpoint, by a ping that signals the agent
+   to collect.  The vocabulary mirrors [RFC8628] and [CIBA] so existing
+   implementations translate directly.
+
+   A request in which some claims resolve to allow and others to ask is
+   answered as a whole.  The issuer MUST hold the response until every
+   outstanding approval resolves, then select the outcome from the
+   released set (Section 4), counting an approved ask claim as released
+   and a declined one as withheld. urn:aap:approval-denied reports that
+   the request released nothing because the principal refused; a refusal
+   of some claims but not others is reported by omission, not by error.
+
+   TODO: handling of an approval that resolves after the service's
+   challenge nonce or the agent's linking-grant context has gone stale,
+   and which outcome (Section 4) the issuer returns in that case.
+
+7.  Disclosure Policy
+
+   A principal's consent to identity disclosure (Section 5) is governed
+   by a *disclosure policy*: the principal's standing preferences,
+   established at the issuer (at or before linking, Section 1.2, and at
+   the issuer's own surfaces), that the issuer evaluates to decide how a
+   claim request is handled.  Because the AAT carries no resolvable
+   handle, the issuer cannot be handed a session to attach consent to at
+   request time; the policy is therefore the issuer's authoritative
+   record of those preferences, and every disclosure on either lane MUST
+   be covered by it (Section 5).  Its shape is fine-grained, per-
+   recipient authorization under per-claim consent, in the manner of
+   OAuth Rich Authorization Requests ([RFC9396]) and OpenID Connect
+   consent ([OIDC]).
+
+   This section separates the behavior a conforming issuer MUST exhibit
+   (Section 7.1, normative) from the optional sensitivity-tier grouping
+   (Section 7.2) and one representation and evaluation procedure
+   (Section 7.3) that satisfy it, both informative.  The policy is held
+   and evaluated entirely by the issuer and is not carried on the wire
+   or parsed by any other party, so its representation is not an
+   interoperability concern and does not bind; how an issuer evaluates
+   it, however, MUST satisfy the constraints below.
+
+7.1.  Policy Behavior and Constraints
+
+   For each claim a requester asks for, the issuer reaches a disclosure
+   decision from three inputs: the *claim*, the *requesting audience*
+   (the service, by origin), and the *brokering agent platform*
+   (identified by the linking grant the claims call or minting
+   authenticates under, [AAP-CORE]).  The decision is exactly one of
+   three outcomes:
+
+   *  allow — the issuer discloses without contacting the principal;
+      this is the standing disclosure grant of Section 5.  On the pre-
+      provisioned lane it is enforced at minting (the issuer mints only
+      allow claims, Section 3); on the issuer-mediated lane the issuer
+      releases the claim without an approval step.
+
+   *  ask — the issuer MUST obtain the principal's interactive approval
+      before disclosing (Section 5, Section 6).  Because the pre-
+      provisioned lane cannot prompt at use, a claim whose decision can
+      be ask for a given audience MUST be served on the issuer-mediated
+      lane for that audience, and MUST NOT be minted into a pre-
+      provisioned credential for it.
+
+   *  deny — the issuer MUST withhold the claim, and MUST fail closed
+      where the request releases nothing (Section 4).
+
+   A conforming issuer MUST observe the following, however it represents
+   and evaluates the policy:
+
+   *  *Privacy-forward by default.* Silent disclosure is the exception a
+      principal grants, not the baseline.  An issuer SHOULD reach allow
+      only through an explicit element of the principal's policy, and
+      SHOULD default an otherwise-unspecified claim to ask, and to deny
+      for its more sensitive claims — those it would release only under
+      per-use approval and an enumerated audience (Section 7.2;
+      evidence-bearing claims additionally carry assurance per
+      [OIDC-IA]).  A claim the principal has not addressed MUST resolve
+      to deny.  This includes predicate (boolean) claims, which an
+      issuer MUST NOT silently allow absent an explicit grant.
+
+   *  *Wildcard bound on sensitive claims.* An issuer MUST NOT allow
+      under a wildcard (any-authenticated-audience) grant any claim
+      whose handling requires the issuer-mediated lane, per-use
+      approval, or an enumerated audience; such a claim requires an
+      enumerated audience or interactive approval.  A wildcard allow is
+      permitted only for claims releasable under a standing grant on the
+      pre-provisioned lane, where agent visibility and issuance-time
+      consent are acceptable (Section 7.2).  The issuer MUST enforce
+      this bound when the policy is set.
+
+   *  *Agent attenuation.* A preference scoped to a specific brokering
+      agent platform MAY only restrict, never widen.  The outcome for a
+      request brokered by a given agent MUST NOT be more permissive than
+      the outcome that would apply to the same (claim, audience) absent
+      any agent-specific preference.  An agent-scoped preference can
+      turn allow into ask or deny; it MUST NOT turn deny or ask into
+      allow.  The agent is a delegate, and a delegate cannot enlarge the
+      principal's policy — the attenuation property of the object-
+      capability model ([OCAP]).
+
+   *  *Purpose is not an input to the decision.* The purpose a requester
+      states on its urn:aap:claims-required challenge is a free-form,
+      verifier-supplied string with no controlled vocabulary; two
+      verifiers word the same intent differently, and a verifier can
+      phrase a purpose to fit whatever grant is most permissive.  An
+      issuer MUST NOT resolve a disclosure outcome from the stated
+      purpose, and SHOULD surface it to the principal at an ask so it
+      informs the human decision.
+
+   *  *Retention is out of scope.* Once a claim is disclosed it MUST be
+      treated as disclosed; the policy governs whether to disclose and
+      places no enforceable obligation on what happens afterward —
+      neither on the requester nor on the brokering agent, which is an
+      unconstrained holder of any value it can read (see the agent-blind
+      condition below and Section 12).
+
+   *  *Lane selection.* The policy, not the claim, selects the lane.  A
+      claim is eligible for the pre-provisioned lane only where its
+      decision for the audience is allow and no agent-blind condition
+      attaches; otherwise it is served on the issuer-mediated lane (the
+      ask rule above and the disclosure-conditions rule below).  An
+      issuer that offers both lanes SHOULD serve a claim on the most
+      issuer-blind lane its policy for that claim permits.
+
+   *  *Evaluation point.* An issuer MUST reach the decision at the point
+      its lane enforces consent: at minting for the pre-provisioned
+      lane, per request for the issuer-mediated lane (Section 5).
+
+   *  *Revocation.* An issuer MUST honor a change to the policy
+      immediately on the issuer-mediated lane; on the pre-provisioned
+      lane the principal's only lever is the credential's mandatory exp
+      (Section 3), and this asymmetry MUST be disclosed to the principal
+      when that lane is used for a claim (Section 5).
+
+   *  *No silent upgrade of sensitive claims.* An issuer MUST NOT
+      promote a claim it handles on the issuer-mediated lane to allow
+      without explicit principal agreement; a remembered approval
+      (Section 7.3) for such a claim requires the principal's agreement
+      at approval time, not an inference from prior use.
+
+   *  *Disclosure conditions (agent-blind).* The principal's policy MAY
+      attach a condition (an Obligation in the sense of [XACML]) to an
+      allow or ask outcome that constrains _how_ a claim is disclosed,
+      not just whether.  This revision defines one: *agent-blind*, which
+      requires the claim be disclosed only on the issuer-mediated lane
+      with the claims token encrypted to the requesting audience
+      (Section 4, Section 9.3), so the brokering agent relays ciphertext
+      and never sees the value.  A claim carrying the agent-blind
+      condition MUST NOT be served on the pre-provisioned lane (where
+      the agent holds the value), and MUST NOT be disclosed to an
+      audience for which the issuer cannot obtain an encryption key.  A
+      condition, once attached, MUST be discharged or the disclosure
+      MUST NOT occur: where it cannot be satisfied the issuer MUST fail
+      closed rather than disclose without it.  An issuer SHOULD attach
+      agent-blind by default when it releases one of its more sensitive
+      claims — one it handles on the issuer-mediated lane — to an
+      enumerated audience.  Consistent with agent attenuation, an agent-
+      scoped preference MAY add the agent-blind condition (a tightening)
+      but MUST NOT remove one set at the audience layer.
+
+7.2.  Sensitivity Tiers
+
+   The policy above is defined per claim, but authoring a rule for every
+   claim an issuer can attest, and asking a principal to weigh in on
+   each, is often more granularity than either needs.  A *sensitivity
+   tier* is an optional grouping an issuer offers so policy can be set,
+   and choices put to the principal, a few buckets at a time — "release
+   basic profile facts freely, ask me before anything sensitive, never
+   release regulated data without a prompt" — rather than claim by
+   claim.  A tier is a convenience for authoring policy and framing
+   consent, not a classification this protocol requires: an issuer MAY
+   group some, all, or none of its claims, MAY define as many or as few
+   tiers as it likes, and MAY still write per-claim rules over and
+   alongside them.  In the representation below a tier is just a claim-
+   class node a rule or default attaches to (Section 7.3).
+
+   The protocol fixes no tier set.  What it fixes is what each
+   disclosure lane guarantees and the consent each requires (Section 3,
+   Section 4, Section 7.1), so those constraints hold whether an issuer
+   reasons about a claim through a tier or on its own.  A tiering tends
+   to track the lanes' reversing trade: the pre-provisioned lane is
+   private from the issuer but exposes the value to the agent and fixes
+   consent at issuance, while the issuer-mediated lane exposes the
+   disclosure to the issuer but keeps the value from the agent and gives
+   per-use consent.  More sensitive facts therefore tend to sit in tiers
+   that route to the issuer-mediated lane under tighter consent.
+
+   An issuer MAY adopt this common framing as a starting point; the
+   bands are illustrative, not normative categories, and an issuer is
+   free to merge, split, rename, or ignore them:
+
+   +==================+===========================+===================+
+   | Example tier     | Claim characteristics     | Usual handling    |
+   +==================+===========================+===================+
+   | Low-sensitivity  | low disclosure harm,      | pre-provisioned,  |
+   |                  | routinely requested,      | standing grant,   |
+   |                  | acceptable for the agent  | wildcard audience |
+   |                  | to hold and to release    |                   |
+   |                  | broadly                   |                   |
+   +------------------+---------------------------+-------------------+
+   | High-sensitivity | identifying or personal   | issuer-mediated,  |
+   |                  | facts the principal wants | per-use approval, |
+   |                  | released only to known    | enumerated        |
+   |                  | recipients and with       | audience, agent-  |
+   |                  | awareness of each use     | blind             |
+   +------------------+---------------------------+-------------------+
+   | Regulated        | claims carrying legal or  | issuer-mediated,  |
+   |                  | compliance weight, or     | per-use approval, |
+   |                  | requiring verified        | evidence-bearing  |
+   |                  | evidence and point-in-    |                   |
+   |                  | time assurance            |                   |
+   +------------------+---------------------------+-------------------+
+
+                                 Table 1
+
+7.3.  Policy Representation and Resolution
+
+   This section is informative.  It gives one representation and
+   evaluation procedure that satisfies Section 7.1; an issuer MAY use
+   any other that yields the same outcomes.
+
+   Represent the policy as a set of tier defaults plus a sparse, ordered
+   set of rules.  A rule selects over three dimensions, and a rule
+   omitting a dimension matches any value of it (a wildcard):
+
+   *  claim — a claim reference (Section 9.2) or a claim-class node
+      (e.g. a sensitivity tier, Section 7.2).  A rule on a claim matches
+      any path into it, and a rule on a more specific path is more
+      specific in ranking; attenuation (Section 7.1) applies unchanged.
+
+   *  audience — the requesting service, by origin; a rule MAY match a
+      parent domain so that subdomains inherit it.
+
+   *  agent — the brokering agent platform.  Evaluable on both lanes,
+      since minting and the claims call both authenticate under a
+      linking grant.
+
+   A rule with an allow or ask outcome MAY also carry an agent_blind
+   condition.  It does not affect matching or the outcome; it is an
+   obligation on the disclosure, requiring the issuer-mediated,
+   encrypted-to-audience channel (Section 7.1).
+
+   The audience and agent dimensions are kept separate because they are
+   different parties answering different questions: the audience is the
+   recipient the claim flows _to_ ("do I trust this service with this
+   data"), and the agent is the delegate the request flows _through_
+   ("do I trust this platform to act unattended on my behalf").  They
+   are orthogonal, and the attenuation constraint applies only to the
+   agent dimension.  With a single linked platform the agent dimension
+   is simply always-wildcard and the model collapses to claim x
+   audience.
+
+   Resolve a request (claim, audience, agent) as follows:
+
+   1.  *Match and rank.* Select every rule whose dimensions all match
+       the request.  Rank matches by specificity: an exact dimension is
+       more specific than a parent-node match, which is more specific
+       than an omitted (wildcard) dimension.
+
+   2.  *Resolve each layer.* The audience layer (rules with no agent)
+       resolves to S: its most specific matching rule, or the claim's
+       tier default if none matches.  The agent layer (rules naming this
+       agent) resolves to A: its most specific matching rule, or
+       unconstrained (allow) if none matches.  Where two equally
+       specific rules in a layer disagree, take the safer outcome under
+       the order deny > ask > allow (a deny-overrides combining
+       algorithm, [XACML]).
+
+   3.  *Attenuate.* The effective outcome is meet(S, A) under allow ⊐
+       ask ⊐ deny.  Because S falls back to the tier default and A to
+       allow, the agent layer can only restrict the audience-or-tier
+       baseline, never widen it (Section 7.1); when neither layer has a
+       matching rule the result is the tier default.
+
+   The example below is a granular policy that exercises all three
+   dimensions:
+
+   {
+     "defaults": { "predicate": "ask", "low": "ask", "high": "deny",
+                   "regulated": "deny", "unknown": "deny" },
+     "rules": [
+       { "claim": "email_verified", "audience": "*",                 "outcome": "allow" },
+       { "claim": "email",          "audience": "*.bigco.example",   "outcome": "allow" },
+       { "claim": "email",          "audience": "*",                 "outcome": "ask"   },
+       { "claim": "address",        "audience": "checkout.bigco.example",
+         "outcome": "allow", "agent_blind": true },
+       { "claim": "address",        "audience": "*",                 "outcome": "ask"   },
+       { "claim": "address",        "agent": "platform:unverified",  "outcome": "deny"  }
+     ]
+   }
+
+   Evaluating (claim=email, audience=cart.bigco.example,
+   agent=platform:acme): the second rule matches by parent-domain and is
+   most specific, so S = allow; no agent-layer rule matches, so A is
+   unconstrained (allow) and meet(allow, allow) = allow.  The same claim
+   for audience=news.example matches only the third rule, ask.  And
+   (claim=address, agent=platform:unverified) resolves S = ask and A =
+   deny, so meet(ask, deny) = deny.  The address rule for
+   checkout.bigco.example shows the obligation: address is released to
+   that one enumerated audience, but only issuer-mediated and encrypted
+   to it, so the agent carries ciphertext and never sees the value.
+
+   The model degrades gracefully.  An issuer MAY omit the agent
+   dimension (applying every decision to all agents), the audience
+   dimension (applying it to all services), or both, keeping the policy
+   at the level of the claim or its sensitivity tier.  The omitted
+   dimensions resolve as wildcards, so such an issuer still conforms; it
+   simply cannot express agent- or domain-specific distinctions.  A
+   coarse policy that exposes only a per-claim choice and leans on tier
+   defaults for the rest:
+
+   {
+     "defaults": { "predicate": "ask", "low": "ask", "high": "deny",
+                   "regulated": "deny", "unknown": "deny" },
+     "rules": [
+       { "claim": "email_verified", "outcome": "allow" },
+       { "claim": "org.iso.18013.5.1.age_over_21", "outcome": "allow" }
+     ]
+   }
+
+   Here email_verified and the age predicate are released to any service
+   through any agent, and every other claim falls to its tier default:
+   the lighter tiers prompt, the sensitive and regulated tiers are
+   denied.  There are no per-domain or per-agent rules to evaluate, and
+   the wildcard bound is respected because only claims the issuer
+   releases under a standing grant are exposed to a wildcard
+   (Section 7.1).
+
+   *Remembering an approval (trust-on-first-use).* When an ask is
+   approved, the issuer MAY, with the principal's agreement, persist a
+   new more-specific allow rule scoped to that (claim, audience, agent)
+   with a stated duration, so the same request is not re-prompted.  The
+   issuer SHOULD offer a remember-scope at approval ("this time", a
+   bounded window, or until revoked) and SHOULD expire rules for
+   audiences the principal has not transacted with for a long interval,
+   to keep the policy small.  The issuer MAY also present, alongside the
+   per-audience option, an option to broaden the audience to a wildcard
+   covering all domains — turning the approval into a standing allow for
+   the claim everywhere; an issuer offering this MUST still honor the
+   wildcard bound, so it is available only for claims releasable under a
+   standing grant.  Claims the issuer handles on the issuer-mediated
+   lane are not auto-remembered and are never offered a wildcard scope
+   (Section 7.1).
+
+8.  Non-Adopting Verifiers
+
+   Both lanes above assume the verifier participates: the pre-
+   provisioned lane answers a urn:aap:claims-required challenge and
+   binds its presentation to the verifier's aud and nonce (Section 3);
+   the issuer-mediated lane returns a token bound to that same aud
+   (Section 4).  A site that has adopted none of this issues no
+   challenge, so there is no audience to bind to, no nonce for
+   freshness, no public key to encrypt to, and no request-time scope for
+   consent.  This module therefore provides no guarantee about a
+   disclosure to a verifier that does not participate in it: audience
+   binding, freshness, and consent scoping are properties the verifier's
+   challenge confers, and absent the challenge they are simply absent.
+
+   An agent nonetheless needs this case.  Acting in a browser, it may
+   have to supply an identity value to a site that has not adopted AAP —
+   typing an email or address into a web form, say — where the site is
+   not a verifier, has sent no challenge, receives only a bare value,
+   and may not even know an agent produced it.  This module supports
+   this as an explicit, lower-assurance path.  Because no challenge was
+   made, the agent is not answering a request; it decides on its own to
+   release a claim value for unbound use, reading it from a pre-
+   provisioned credential it already holds or, for a value it has not
+   received, requesting release from the issuer as it would provision
+   one (Section 3).
+
+   Such a release is subject to the following:
+
+   *  It is an agent-held disclosure and is covered by the principal's
+      disclosure policy like any other (Section 5, Section 7.1); it is
+      confined to claims whose handling tolerates the agent holding the
+      value.
+
+   *  The issuer MUST NOT release a claim carrying the agent-blind
+      condition for this use (Section 7.1): agent-blind requires the
+      value be encrypted to a requesting audience so the agent never
+      sees it, and here there is no audience and the agent must read the
+      value to enter it.
+
+   *  Where the release resolves to ask, the issuer MUST present to the
+      principal that the agent is requesting the value for its own use —
+      no site has challenged for it, and the agent will hold and enter
+      it — so the principal grants a release to the agent, not a
+      disclosure to a verifier.
+
+   The value the site receives is unauthenticated and unbound: it
+   carries none of the issuer-signature, digest, and key-binding checks
+   a participating verifier runs (Section 3), the site cannot tell it
+   from a value the agent supplied on its own, and a value captured by
+   one site can be replayed to another.  Once released, the value is in
+   the agent's hands, and this module places no control on what the
+   agent does with it afterward (Section 7.1).
+
+9.  Discovery
+
+   The claims module adds two discovery surfaces to the core's.  The
+   issuer's metadata document ([AAP-CORE]) gains the claims endpoints,
+   keys, and capability advertisement (Section 9.1, Section 9.2).  The
+   one other publisher is a service on the issuer-mediated lane: it
+   publishes a keyset, never endpoints (nothing calls the service for
+   claims; the agent relays to it); the issuer resolves that keyset to
+   authenticate the service's signed challenge (Section 9.3) and to
+   encrypt a claims token to it (Section 9.3.1).
+
+9.1.  Issuer Metadata Members
+
+   This module registers the following members of the issuer metadata
+   document defined by [AAP-CORE].  An issuer that offers this module
+   includes the members for the lanes it offers:
+
+   {
+     "issuer": "https://idp.example",
+     "token_issuance_endpoint": "https://idp.example/aap-issuer/issue",
+     "token_keys": "https://idp.example/.well-known/aap-issuer/token-keys",
+     "claims_jwks_uri": "https://idp.example/.well-known/aap-issuer/jwks.json",
+     "claims_endpoint": "https://idp.example/aap-issuer/claims",
+     "credential_endpoint": "https://idp.example/aap-issuer/credential",
+     "usage_report_endpoint": "https://idp.example/aap-issuer/usage-report",
+
+     "claims_supported": ["email", "email_verified", "given_name", "family_name",
+                          "address", "org.iso.18013.5.1.age_over_21",
+                          "https://idp.example/claims/loyalty_tier"]
+   }
+
+     +=======================+=======================================+
+     | Member                | Meaning                               |
+     +=======================+=======================================+
+     | claims_jwks_uri       | The issuer's JWS keys for signing     |
+     |                       | claims tokens and pre-provisioned     |
+     |                       | credentials (Section 9.1.1).          |
+     |                       | REQUIRED if any claims lane is        |
+     |                       | offered.                              |
+     +-----------------------+---------------------------------------+
+     | claims_endpoint       | The issuer-mediated lane endpoint     |
+     |                       | (Section 4).  REQUIRED if that lane   |
+     |                       | is offered.                           |
+     +-----------------------+---------------------------------------+
+     | credential_endpoint   | Where the agent provisions wallet     |
+     |                       | credentials (Section 3).  REQUIRED if |
+     |                       | that lane is offered.                 |
+     +-----------------------+---------------------------------------+
+     | usage_report_endpoint | Where the agent sends the pre-        |
+     |                       | provisioned-lane usage report         |
+     |                       | (Section 5).  OPTIONAL; present only  |
+     |                       | if the issuer offers reporting.       |
+     +-----------------------+---------------------------------------+
+     | claims_supported      | Array of claim identifiers the issuer |
+     |                       | can attest (Section 9.2).  OPTIONAL;  |
+     |                       | RECOMMENDED once any claims lane is   |
+     |                       | offered.  A non-binding hint; the     |
+     |                       | claims-required challenge and its     |
+     |                       | response are authoritative.           |
+     +-----------------------+---------------------------------------+
+
+                                  Table 2
+
+   The members inherit the fetch and integrity rules of the metadata
+   document itself ([AAP-CORE]): same-origin as issuer, HTTPS, no cross-
+   origin redirects, no IP-literal hosts.  Which lanes an issuer offers
+   is read from which endpoints are present; a wallet-only issuer
+   (Section 1.2) names a credential_endpoint and no claims_endpoint.
+
+9.1.1.  Claims Keys
+
+   The claims_jwks_uri names the issuer's JWS keys for claims tokens and
+   pre-provisioned credentials.  They rotate additively, as the core's
+   token keys do ([AAP-CORE]): the issuer publishes a successor before
+   using it and retires a predecessor after a grace period longer than
+   the longest outstanding artifact; for pre-provisioned credentials,
+   the longest outstanding artifact is bounded by the credential exp
+   (Section 3).  Consumers MUST fetch keys over HTTPS from the named
+   host and MUST NOT follow cross-origin redirects or resolve IP-literal
+   URLs.
+
+   JWS-based artifacts in this module ([RFC7515]) — the issuer's claims
+   tokens (JWTs, [RFC7519]) and pre-provisioned credentials, and the
+   holder key-binding JWTs the agent presents against them — use EdDSA
+   with Ed25519 ([RFC8037]) as the mandatory-to-implement signature
+   algorithm; ECDSA with P-256 (ES256, [RFC7518]) MAY also be used.
+
+9.2.  Claims Capability
+
+   A service decides which claims it can obtain about a principal before
+   it sends a claims-required challenge.  The issuer advertises this at
+   the issuer level in its metadata document: the set of claims it can
+   attest.  The advertisement is capability only and carries nothing
+   about any individual principal: an issuer MUST NOT expose, through
+   discovery, which claims a specific principal holds, any per-principal
+   value, or any handle that resolves to a person.  This preserves the
+   anonymous front door ([AAP-CORE]) at the discovery layer, and is why
+   capability lives in a static, cacheable document rather than behind a
+   per-principal call.
+
+   claims_supported is a non-binding hint, as in its OpenID Connect
+   Discovery namesake.  In OpenID Connect Discovery 1.0
+   ([OIDC-Discovery], Section 3), claims_supported lists the claims a
+   provider "MAY be able to supply values for" and "might not be an
+   exhaustive list", because OIDC resolves what is actually available at
+   runtime through the per-principal UserInfo endpoint ([OIDC],
+   Section 5.3).  AAP has no such per-principal probe by design —
+   discovery MUST NOT reveal anything about an individual principal — so
+   a service cannot confirm a claim ahead of time; it learns what is
+   disclosed only from the response to its claims-required challenge.
+   This module aligns that response with the same best-effort subset
+   semantics (Section 4): consented and attestable claims are present,
+   the rest are omitted, and omission is not an error; the service
+   compares what it receives against its requirements. claims_supported
+   therefore lets a service avoid requesting a claim the issuer plainly
+   cannot attest, but it is advisory: the issuer SHOULD keep it current,
+   a service SHOULD NOT treat a listed claim as guaranteed or an absent
+   one as forbidden, and the challenge and its response remain
+   authoritative.  Whether a given principal has a value for a listed
+   claim is in any case resolved per request at disclosure, under the
+   principal's disclosure policy (Section 7), and never exposed through
+   discovery.
+
+   Because the list is advisory, a service MAY request a claim that does
+   not appear in claims_supported when it has learned of the issuer's
+   capability out of band — through a bilateral agreement, partner
+   onboarding, or published documentation.  The claims-required
+   challenge carries the request and the issuer's response is
+   authoritative: the issuer attests the claim or it does not, exactly
+   as for an advertised one.  Advertisement is therefore an optimization
+   that lets a service skip claims an issuer plainly cannot attest, not
+   a precondition for requesting a claim.
+
+   Lane and format are not advertised per claim: which lane a claim
+   arrives on, and therefore its wire format, depends on the principal's
+   provisioning and the disclosure policy (Section 7), while which lanes
+   the issuer offers at all is already visible from the presence of
+   credential_endpoint and claims_endpoint (Section 9.1).  A service
+   constrains the formats it accepts in its claims-required challenge.
+
+9.2.1.  Claim Vocabulary and References
+
+   Claim identifiers come from a shared vocabulary so that "what this
+   issuer can attest" means the same thing across issuers and to every
+   service, with the following order of preference:
+
+   1.  *OpenID Connect standard claims* are the primary source.  A claim
+       defined as an OpenID Connect standard claim ([OIDC],
+       Section 5.1), which is also registered in the IANA "JSON Web
+       Token Claims" registry, MUST be named by that registered name
+       (email, email_verified, given_name, family_name, address,
+       birthdate).
+
+   2.  *Verified-identity claims* use the OpenID Connect for Identity
+       Assurance set (place_of_birth, nationalities, and similar),
+       likewise IANA-registered.
+
+   3.  *A claim with no registered OIDC name* SHOULD reuse the
+       established identifier from the ecosystem that defines it,
+       qualified by enough of its defining scope to be unambiguous: the
+       ISO mDL age predicate is the element age_over_21 in the mdoc
+       namespace org.iso.18013.5.1, written here as
+       org.iso.18013.5.1.age_over_21.  Where no established identifier
+       exists, the claim MUST use a collision-resistant name — a URI
+       under the issuer's own domain (for example
+       https://idp.example/claims/loyalty_tier) — per [RFC7519].
+
+   This module does not mint its own identifier for a claim that already
+   has a registered name; it reuses the existing one in place.
+
+   Every surface that names a claim — claims_supported, the claims
+   member of the claims-required challenge, and the claim dimension of a
+   disclosure-policy rule (Section 7) — takes a *claim reference*. A
+   claim reference is either a string naming a whole top-level claim, or
+   a *claims path pointer* ([I-D.ietf-oauth-sd-jwt-vc]): a non-empty
+   array in which a string selects an object member, a non-negative
+   integer selects an array element, and null selects every element of
+   an array.  A string is equivalent to its single-element path
+   ("address" is ["address"]).  The first path component MUST be a name
+   from the vocabulary above.
+
+   A reference to a whole claim covers everything beneath it: an issuer
+   that advertises address can attest any of its members, and a policy
+   rule on address matches any path into it.  A rule on a more specific
+   path ranks as more specific at resolution (Section 7.3).  Nested and
+   array claims are addressed by a path, never by a flattened name.
+
+   The capability document is the issuer metadata document, so it
+   inherits its fetch and integrity rules ([AAP-CORE]): served same-
+   origin over HTTPS, no cross-origin redirects, cacheable per
+   [RFC9110].  Integrity rests on TLS and the same-origin rule, as for
+   the rest of the document; tampering with the list can only cause a
+   request to fail or be skipped, not impersonation or disclosure (the
+   AAT and claims tokens are independently signed), so it needs no
+   stronger protection.  A service therefore learns an issuer's claims
+   capability offline, with no call that could reveal a principal.  How
+   a service discovers _which_ issuer can attest a given claim, rather
+   than what a known issuer attests, is a separate trust-registry
+   concern and is out of scope for this revision (Section 14).
+
+9.3.  Requester Keys
+
+   On the issuer-mediated lane the issuer does not take the requester's
+   identity, audience, or purpose on the agent's say-so: the service
+   MUST sign its claims-required challenge with a key resolvable from
+   its aud origin, and the issuer verifies that signature before acting
+   (Section 4).  The aud-binding of the minted token is a second line of
+   defense on top of that check, not a substitute for it: a token is
+   bound to the aud the service named in its signed challenge and is
+   inert anywhere else, so a relayed token cannot be redirected.  The
+   issuer resolves two distinct service keys, each verifiably bound to
+   the service: a signing key to authenticate that challenge, and a
+   separate encryption key to encrypt the claims token to the service
+   under the agent-blind condition (Section 7.1, Section 9.3.1).  In
+   each case the key MUST be bound to the aud origin — served from it —
+   so that key authority equals the aud binding the claims token already
+   carries.
+
+9.3.1.  Encrypting the Claims Token to the Service
+
+   Under the agent-blind condition (Section 7.1) the issuer-mediated
+   claims token MUST be encrypted to the requesting aud, so the
+   brokering agent relays only ciphertext.  The issuer resolves the
+   service's encryption key, then signs and encrypts the claims token to
+   it.
+
+   An issuer resolves the service's encryption key through its requester
+   metadata, published at a well-known location at the aud origin:
+
+   GET https://<aud>/.well-known/aap-requester
+
+   The document carries one REQUIRED member, jwks_uri, naming the
+   service's one JSON Web Key Set ([RFC7517]), so a consumer caches a
+   single JWKS per service:
+
+   { "jwks_uri": "https://merchant.example/.well-known/aap-requester/jwks.json" }
+
+   The metadata document and the JWKS it names MUST be fetched under the
+   same rules as issuer keys (Section 9.1.1): over HTTPS, same-origin as
+   the aud, with no cross-origin redirects and no IP-literal hosts.  The
+   issuer selects a key marked "use": "enc", identified by its kid; when
+   the JWKS carries more than one "use": "enc" key (across a rotation
+   window or across curves) the issuer MAY select any current member and
+   MUST carry the selected kid in the JWE protected header so the
+   service can identify the decryption key, and a service MUST reject a
+   JWE naming a key it has retired.  This key MUST be distinct from the
+   key that signs the service's challenge (Section 4): a key MUST NOT be
+   shared across signing and key agreement, following the one-algorithm-
+   per-key rule ([RFC8725]), regardless of whether one curve could serve
+   both, so the service's signing key MUST NOT be repurposed as the
+   encryption key, including by converting an Ed25519 signing key to its
+   X25519 form.  The service's "use": "enc" keys rotate additively, as
+   issuer keys do (Section 9.1.1): the service publishes a successor
+   before using it and retains a predecessor until the last claims token
+   encrypted to it has expired.
+
+   This profile provides no forward secrecy: the static "use": "enc" key
+   is ephemeral-static ECDH, so compromise of the service's decryption
+   key exposes past claims tokens encrypted to it, and the rotation
+   window above is what bounds that exposure.  A service that wants a
+   narrower window rotates its encryption key faster.
+
+   The claims token is signed and then encrypted as a nested JWT
+   ([RFC7519]): the issuer signs the aap-claims+jwt (Section 4), then
+   encrypts the resulting JWS as the payload of a JWE ([RFC7516]) in
+   Compact Serialization, with header parameters cty JWT, alg ECDH-ES
+   (direct key agreement), and enc A256GCM.  Implementations MUST
+   support the P-256 curve ([RFC7518]), the suite every pair of parties
+   is guaranteed to share, and SHOULD support X25519 ([RFC8037]),
+   matching the Ed25519 signing posture of Section 9.1.1; a service that
+   publishes only an X25519 key reaches only issuers that implement it.
+   The issuer encrypts to the curve of the resolved recipient key and
+   carries its own ephemeral public key in epk on that curve, per
+   [RFC7518].  A party MUST validate the peer public key — for the
+   issuer, the resolved recipient key; for the service, the issuer's epk
+   — before using the agreed secret: on the NIST curves the key MUST be
+   a valid point on the stated curve, per the partial public-key
+   validation of [SP800-56A], preventing invalid-curve attacks
+   ([RFC8725]); X25519 accepts any 32-octet string and has no on-curve
+   check (Section 5 of [RFC7748]), so a party SHOULD instead reject an
+   all-zero X25519 shared secret (Section 6.1 of [RFC7748]), or rely on
+   a library that rejects low-order points.  This profile does not use
+   apu or apv: replay and cross-service redirection are prevented by the
+   recipient's verification of the nonce, aud, and short exp in the
+   signed inner JWS, and because ECDH-ES provides no sender
+   authentication, folding those values into the JWE key-derivation
+   inputs would add nothing over that signed check.
+
+   An example JWE protected header:
+
+   { "alg": "ECDH-ES", "enc": "A256GCM", "cty": "JWT",
+     "kid": "svc-enc-2026", "epk": { "kty": "EC", "crv": "P-256", "x": "...", "y": "..." } }
+
+   On receipt the service MUST reject the JWE unless alg is ECDH-ES and
+   enc is A256GCM — the only values this profile defines — checking the
+   algorithms against this allow-list before decrypting rather than
+   trusting the header ([RFC8725]); it then decrypts the JWE, confirms
+   cty JWT and the inner JWS's typ aap-claims+jwt, and verifies the
+   inner JWS as it would an unencrypted claims token (Section 4): issuer
+   signature, aud equal to itself, the nonce matching its challenge, and
+   the validity window, failing closed at the first failure.  Because
+   the encryption key is served from the aud origin, a token the agent
+   cannot decrypt is also inert to any recipient but the named service,
+   matching the guarantee the aud-bound signed token already carries;
+   this confidentiality reduces to TLS and Web-PKI authentication of the
+   aud origin and the integrity of its published keyset, no stronger an
+   assumption than the aud binding the token already relies on.
+
+   If the agent-blind condition applies and the issuer cannot resolve an
+   encryption key bound to the aud, it MUST fail closed and MUST NOT
+   disclose the claim (Section 7.1), returning urn:aap:consent-required
+   as it would for any other claim it cannot release.  This outcome is
+   reachable only after the policy resolved to allow or ask, so a
+   distinct error would reveal that disclosure would otherwise have
+   proceeded; returning the same response as a denial keeps the outcomes
+   indistinguishable.
+
+   TODO: whether to adopt the HTTP Message Signatures directory
+   ([I-D.meunier-http-message-signatures-directory]) for service keys.
+   For the service's challenge-signing key, this should reconcile with
+   the service keyset in Section 9.3.1: if the challenge is signed as a
+   JWS, its verifying key is the use:sig member of that same JWKS; if as
+   a Web Bot Auth HTTP Message Signature, it resolves through the
+   signature directory instead.
+
+10.  Relationship to Existing Work
+
+   This section is informative.
+
+   +==============================+================+===================+
+   | Work                         |What it provides|How this module    |
+   |                              |                |uses it            |
+   +==============================+================+===================+
+   | SD-JWT-VC                    |Holder-presented|The pre-           |
+   | ([I-D.ietf-oauth-sd-jwt-vc], |credentials with|provisioned (fast) |
+   | [RFC9901])                   |selective       |disclosure lane    |
+   |                              |disclosure and  |(Section 3)        |
+   |                              |key binding     |                   |
+   +------------------------------+----------------+-------------------+
+   | OIDC UserInfo / CIBA         |Issuer-held     |The shape of the   |
+   | ([OIDC], [CIBA])             |claims and      |issuer-mediated    |
+   |                              |backchannel user|(slow) disclosure  |
+   |                              |approval        |lane and its       |
+   |                              |                |asynchronous       |
+   |                              |                |approval           |
+   |                              |                |(Section 4)        |
+   +------------------------------+----------------+-------------------+
+   | OpenID Connect Discovery /   |Issuer-level    |The                |
+   | OAuth AS Metadata            |.well-known     |claims_supported   |
+   | ([OIDC-Discovery],           |capability      |advertisement      |
+   | [RFC8414])                   |document        |(Section 9.2)      |
+   +------------------------------+----------------+-------------------+
+   | OASIS XACML 3.0 ([XACML])    |Attribute-based |The disclosure     |
+   |                              |rules with      |policy's           |
+   |                              |Obligations,    |agent_blind        |
+   |                              |named combining |Obligation, its    |
+   |                              |algorithms, and |deny > ask > allow |
+   |                              |default-deny    |(deny-overrides)   |
+   |                              |                |tiebreak, and its  |
+   |                              |                |fail-closed        |
+   |                              |                |default            |
+   |                              |                |(Section 7)        |
+   +------------------------------+----------------+-------------------+
+   | Object-capability model      |Authority as an |The agent-         |
+   | ([OCAP])                     |attenuable, non-|attenuation        |
+   |                              |amplifiable     |invariant: an      |
+   |                              |delegation      |agent-scoped       |
+   |                              |                |preference may     |
+   |                              |                |only restrict,     |
+   |                              |                |never enlarge, the |
+   |                              |                |principal's policy |
+   |                              |                |(Section 7)        |
+   +------------------------------+----------------+-------------------+
+   | OAuth Rich Authorization     |Fine-grained,   |The per-(claim,    |
+   | Requests ([RFC9396])         |per-resource and|audience) grant    |
+   |                              |per-recipient   |shape and consent- |
+   |                              |authorization   |gated outcomes of  |
+   |                              |                |the disclosure     |
+   |                              |                |policy (Section 7) |
+   +------------------------------+----------------+-------------------+
+
+                                  Table 3
+
+11.  Privacy Considerations
+
+   The privacy properties of the anonymous front door are the core's
+   ([AAP-CORE]).  This module's privacy analysis concerns what happens
+   when facts do move.
+
+   *The two disclosure lanes trade exposure in opposite directions.* The
+   asymmetry is deliberate, and the principal's policy chooses per claim
+   (Section 7.1), commonly authored by sensitivity tier (Section 7.2).
+   The pre-provisioned lane (Section 3) is issuer-blind — the issuer is
+   not contacted at disclosure and, unless the principal has opted into
+   usage reporting (Section 5), learns nothing about where a fact is
+   presented — but the agent holds the credential and sees the fact, and
+   consent is fixed at issuance time.  The issuer-mediated lane
+   (Section 4) is the reverse: the agent can be kept from reading the
+   values (the claims token MAY be encrypted to the service) and consent
+   is live, but the issuer necessarily learns that this principal
+   disclosed to this service — issuer-side correlation that the front-
+   door attestation deliberately avoided.  Neither lane is strictly more
+   private; sensitivity tiering routes a fact to the lane whose exposure
+   is acceptable for it, and a sensitive fact is kept off the issuer-
+   blind lane's standing wildcard grants (Section 5).
+
+   *Issuer blindness limits issuer-side auditability.* On the pre-
+   provisioned lane the issuer provisions the credential but is not
+   involved in its presentation; unless the principal has opted into
+   usage reporting (Section 5), it therefore does not learn through this
+   protocol whether or when the credential was presented, which claims
+   were disclosed, or which service received them.  This is the lane's
+   intended property, and its cost: absent that opt-in the issuer cannot
+   maintain a complete disclosure history for the principal or detect
+   overbroad requests at presentation.
+
+   *Pre-provisioned presentations are linkable through a reused
+   credential.* An SD-JWT-VC presented twice shows the same issuer
+   signature and the same disclosure digests, so two services — or one
+   service across visits — can match the copies.  Single-use
+   presentation (Section 3) removes that correlator: each presentation
+   shows a credential minted with fresh salts and a fresh issuer
+   signature.  What single use does not remove is linkability under
+   issuer collusion: issuance on this lane is not blind, the issuer
+   knows which credentials it minted for which principal, and a verifier
+   that shares a presented credential with the issuer identifies the
+   principal.  A blind issuance scheme would close that channel and is
+   deferred (Section 14).
+
+12.  Security Considerations
+
+   Selective disclosure on the pre-provisioned lane (Section 3) permits
+   the agent to disclose a subset of the claims in a credential but does
+   not enforce that the selected subset is necessary or limited to the
+   claims requested by the service.  Once a credential has been
+   provisioned, the issuer is not involved in its presentation and
+   cannot prevent an erroneous, compromised, or malicious agent from
+   disclosing additional claims available in that credential.
+
+   Even when the origin and integrity of a claims request are verified,
+   this establishes neither that the requested claims are necessary nor
+   that the stated purpose is truthful.  A malicious service can
+   therefore issue an overbroad claims request.  A claim whose use-time
+   disclosure cannot be entrusted to the agent's judgment therefore does
+   not belong on the pre-provisioned lane: Section 3 forbids
+   provisioning a claim that requires per-use approval, an enumerated
+   audience, or agent-blind handling, and the lane-routing rule of
+   Section 2 keeps any other such claim on the issuer-mediated lane.
+
+   What bounds an overbroad request is the disclosure policy and the
+   issuer's position as chokepoint.  On the issuer-mediated lane every
+   request resolves against the policy (Section 7): a claim outside a
+   standing grant resolves to ask — putting the requester, the claims,
+   and the stated purpose in front of the principal (Section 5) — or to
+   deny, and the wildcard bound caps what a standing grant releases
+   without approval.  The issuer authenticates the requester (Section 4)
+   and logs every request, denied ones included (Section 5); repeated
+   overbroad requests from one requester are visible there, and an
+   issuer MAY refuse further disclosure to a requester exhibiting a
+   pattern of overbroad requests.  On the pre-provisioned lane the
+   policy acts at minting: the wallet never contains a claim the policy
+   does not resolve to allow, so a request, however broad, obtains at
+   most the wallet's contents.
+
+   The brokering agent is a trusted custodian of every value it can
+   read.  On the pre-provisioned lane the agent always holds the
+   disclosed values; on the issuer-mediated lane it holds them unless
+   the claims token is encrypted to the service under an agent-blind
+   condition (Section 7.1).  The module's bindings — audience, nonce and
+   the issuer signature — prevent the agent from presenting a value as
+   an attested claim to a service that should not receive it: a
+   challenging service obtains a freshly issuer-signed, audience- and
+   nonce-bound claim or nothing, and a token minted for one service is
+   inert at another.  Those bindings do not, and cannot, constrain what
+   the agent does with a plaintext value once it can read it — it may
+   store, aggregate, profile, or re-disclose the value out of band.
+   Encrypting the claims token to the service (agent-blind, Section 4)
+   is the only structural control, and it applies only where the agent
+   need not read the value; for a claim the agent must act on — an
+   address it uses, a predicate it evaluates — the agent necessarily
+   holds the plaintext and no protocol mechanism removes that exposure.
+   Confining sensitive claims to the agent-blind path follows from this.
+
+   TODO.  Points to cover:
+
+   *  Issuer-mediated lane requester authentication: because the agent
+      relays the challenge, the issuer authenticates the request by
+      verifying the service's signature over it, so aud, nonce, and
+      purpose are the service's own and not the agent's (Section 4).
+
+   *  Non-adopting verifiers (Section 8): the module confers no
+      guarantee absent a verifier challenge.  Supplying a bare claim
+      value to a non-participating site (browser form-fill) is a
+      supported lower-assurance path governed by the principal's
+      disclosure policy: it excludes agent-blind claims, requires the
+      principal be told the agent is requesting the value for its own
+      use, and leaves the released value unauthenticated (no issuer
+      signature the site can verify), replayable across origins, and in
+      the agent's hands with no protocol control on its use.
+
+   *  Theft of a claims token or a pre-provisioned credential; what the
+      aud/nonce bindings and the KB-JWT do and do not bound.
+
+13.  IANA Considerations
+
+   TODO.  Registrations implied by the current text, within the urn:aap:
+   namespace registered by [AAP-CORE] and the registries it establishes:
+
+   *  Problem types: urn:aap:claims-required, urn:aap:consent-required,
+      urn:aap:approval-pending, urn:aap:slow-down, urn:aap:approval-
+      denied, urn:aap:approval-expired.
+
+   *  Media type application/aap-claims+jwt and JWT typ aap-claims+jwt;
+      SD-JWT-VC typ dc+sd-jwt is reused as specified.
+
+   *  HTTP field name Identity-Presentation.
+
+   *  Issuer-metadata members: claims_jwks_uri, claims_endpoint,
+      credential_endpoint, usage_report_endpoint, claims_supported
+      (Section 9.1).
+
+   *  Well-known URI aap-requester (a service's requester metadata for
+      the issuer-mediated lane: a document whose jwks_uri names the
+      service's one JWKS, holding its use:enc encryption key and, if the
+      challenge-signing choice of Section 9.3 lands on JWS, its use:sig
+      challenge-signing key), published at the aud origin and fetched by
+      the issuer (Section 9.3.1).
+
+14.  Open Items
+
+   A running list of the decisions this revision defers, collected for
+   review:
+
+   *  How tightly the key-binding proof should be bound to the request
+      it rides on: whether a verifier MUST require the request
+      signature's keyid to be the [RFC7638] thumbprint of the
+      credential's cnf.jwk, as the platform-endorsed key profile
+      ([AAP-LOCAL]) does for its endorsement, and whether cnf equal to
+      the agent's Web Bot Auth key should remain RECOMMENDED now that
+      the two proofs are separate (Section 3).
+
+   *  Pre-provisioned lane: whether to adopt a blind issuance scheme
+      (for example BBS-based, [I-D.irtf-cfrg-bbs-signatures]) to remove
+      issuer-collusion linkability across presentations (Section 11).
+
+   *  Usage-report mechanics on the pre-provisioned lane (Section 5):
+      the wire mechanism (a Security Event Token per RFC 8417, delivered
+      by HTTP push per RFC 8935, is the candidate), how the opt-in is
+      recorded, and whether reports enter a principal-visible log.
+
+   *  Stale-approval handling on the issuer-mediated lane (Section 6).
+
+   *  Whether a request that releases nothing keeps two distinguishable
+      outcomes (a consent problem type when every refusal is a consent
+      refusal, a claims token carrying no requested claims otherwise) or
+      collapses them into one (Section 4).
+
+   *  Whether this module maintains a non-normative crosswalk annex of
+      OIDC <-> mDL <-> eIDAS PID claim equivalences, and its scope
+      (Section 9.2).
+
+   *  Whether to define an SD-JWT-VC Type Metadata document for the pre-
+      provisioned credential's vct type, hosted at the vct URL, and its
+      consistency requirement against claims_supported (Section 3).
+
+   *  Issuer-of-record discovery: how a service finds which issuer(s)
+      can attest a given claim (rather than what a known issuer
+      attests), and at what assurance.  A trusted-list / registry
+      concern (cf. mDL trust lists, EUDI trusted lists), distinct from
+      per-issuer capability advertisement (Section 9.2).
+
+   *  Service key directory: bare JWK Sets versus the Web Bot Auth
+      signature directory for the challenge-signing key (Section 9.3).
+
+15.  Acknowledgments
+
+   TODO.
+
+16.  References
+
+16.1.  Normative References
+
+   [AAP-CORE] Drapeau, R. and D. Pettersson, "Agent Attestation Protocol
+              (AAP)", <https://agentic-protocols.github.io/agentic-
+              attestation-protocol/draft-agent-attestation-
+              protocol.html>.
+
+   [I-D.ietf-oauth-sd-jwt-vc]
+              Terbu, O., Fett, D., and B. Campbell, "SD-JWT-based
+              Verifiable Digital Credentials (SD-JWT VC)", Work in
+              Progress, Internet-Draft, draft-ietf-oauth-sd-jwt-vc-18, 3
+              August 2026, <https://datatracker.ietf.org/doc/html/draft-
+              ietf-oauth-sd-jwt-vc-18>.
+
+   [OIDC-IA]  OpenID Foundation, "OpenID Connect for Identity Assurance
+              1.0", <https://openid.net/specs/openid-connect-4-identity-
+              assurance-1_0-final.html>.
+
+   [RFC2119]  Bradner, S., "Key words for use in RFCs to Indicate
+              Requirement Levels", BCP 14, RFC 2119,
+              DOI 10.17487/RFC2119, March 1997,
+              <https://www.rfc-editor.org/rfc/rfc2119>.
+
+   [RFC7515]  Jones, M., Bradley, J., and N. Sakimura, "JSON Web
+              Signature (JWS)", RFC 7515, DOI 10.17487/RFC7515, May
+              2015, <https://www.rfc-editor.org/rfc/rfc7515>.
+
+   [RFC7516]  Jones, M. and J. Hildebrand, "JSON Web Encryption (JWE)",
+              RFC 7516, DOI 10.17487/RFC7516, May 2015,
+              <https://www.rfc-editor.org/rfc/rfc7516>.
+
+   [RFC7517]  Jones, M., "JSON Web Key (JWK)", RFC 7517,
+              DOI 10.17487/RFC7517, May 2015,
+              <https://www.rfc-editor.org/rfc/rfc7517>.
+
+   [RFC7518]  Jones, M., "JSON Web Algorithms (JWA)", RFC 7518,
+              DOI 10.17487/RFC7518, May 2015,
+              <https://www.rfc-editor.org/rfc/rfc7518>.
+
+   [RFC7519]  Jones, M., Bradley, J., and N. Sakimura, "JSON Web Token
+              (JWT)", RFC 7519, DOI 10.17487/RFC7519, May 2015,
+              <https://www.rfc-editor.org/rfc/rfc7519>.
+
+   [RFC7638]  Jones, M. and N. Sakimura, "JSON Web Key (JWK)
+              Thumbprint", RFC 7638, DOI 10.17487/RFC7638, September
+              2015, <https://www.rfc-editor.org/rfc/rfc7638>.
+
+   [RFC7748]  Langley, A., Hamburg, M., and S. Turner, "Elliptic Curves
+              for Security", RFC 7748, DOI 10.17487/RFC7748, January
+              2016, <https://www.rfc-editor.org/rfc/rfc7748>.
+
+   [RFC7800]  Jones, M., Bradley, J., and H. Tschofenig, "Proof-of-
+              Possession Key Semantics for JSON Web Tokens (JWTs)",
+              RFC 7800, DOI 10.17487/RFC7800, April 2016,
+              <https://www.rfc-editor.org/rfc/rfc7800>.
+
+   [RFC8037]  Liusvaara, I., "CFRG Elliptic Curve Diffie-Hellman (ECDH)
+              and Signatures in JSON Object Signing and Encryption
+              (JOSE)", RFC 8037, DOI 10.17487/RFC8037, January 2017,
+              <https://www.rfc-editor.org/rfc/rfc8037>.
+
+   [RFC8174]  Leiba, B., "Ambiguity of Uppercase vs Lowercase in RFC
+              2119 Key Words", BCP 14, RFC 8174, DOI 10.17487/RFC8174,
+              May 2017, <https://www.rfc-editor.org/rfc/rfc8174>.
+
+   [RFC8725]  Sheffer, Y., Hardt, D., and M. Jones, "JSON Web Token Best
+              Current Practices", BCP 225, RFC 8725,
+              DOI 10.17487/RFC8725, February 2020,
+              <https://www.rfc-editor.org/rfc/rfc8725>.
+
+   [RFC9110]  Fielding, R., Ed., Nottingham, M., Ed., and J. Reschke,
+              Ed., "HTTP Semantics", STD 97, RFC 9110,
+              DOI 10.17487/RFC9110, June 2022,
+              <https://www.rfc-editor.org/rfc/rfc9110>.
+
+   [RFC9421]  Backman, A., Ed., Richer, J., Ed., and M. Sporny, "HTTP
+              Message Signatures", RFC 9421, DOI 10.17487/RFC9421,
+              February 2024, <https://www.rfc-editor.org/rfc/rfc9421>.
+
+   [RFC9457]  Nottingham, M., Wilde, E., and S. Dalal, "Problem Details
+              for HTTP APIs", RFC 9457, DOI 10.17487/RFC9457, July 2023,
+              <https://www.rfc-editor.org/rfc/rfc9457>.
+
+   [RFC9901]  Fett, D., Yasuda, K., and B. Campbell, "Selective
+              Disclosure for JSON Web Tokens", RFC 9901,
+              DOI 10.17487/RFC9901, November 2025,
+              <https://www.rfc-editor.org/rfc/rfc9901>.
+
+   [SP800-56A]
+              National Institute of Standards and Technology,
+              "Recommendation for Pair-Wise Key-Establishment Schemes
+              Using Discrete Logarithm Cryptography", April 2018,
+              <https://doi.org/10.6028/NIST.SP.800-56Ar3>.
+
+16.2.  Informative References
+
+   [AAP-LOCAL]
+              Drapeau, R. and D. Pettersson, "Local Agent Profiles for
+              the Agent Attestation Protocol", <https://agentic-
+              protocols.github.io/agentic-attestation-protocol/draft-
+              aap-local-agent.html>.
+
+   [CIBA]     OpenID Foundation, "OpenID Connect Client-Initiated
+              Backchannel Authentication Flow - Core 1.0",
+              <https://openid.net/specs/openid-client-initiated-
+              backchannel-authentication-core-1_0.html>.
+
+   [I-D.irtf-cfrg-bbs-signatures]
+              Looker, T., Kalos, V., Whitehead, A., Lodder, M., and G.
+              M. Bernstein, "The BBS Signature Scheme", Work in
+              Progress, Internet-Draft, draft-irtf-cfrg-bbs-signatures-
+              13, 13 October 2026,
+              <https://datatracker.ietf.org/doc/html/draft-irtf-cfrg-
+              bbs-signatures-13>.
+
+   [I-D.meunier-http-message-signatures-directory]
+              Meunier, T. and S. Major, "HTTP Message Signatures
+              Directory", Work in Progress, Internet-Draft, draft-
+              meunier-http-message-signatures-directory-05, 2 March
+              2026, <https://datatracker.ietf.org/doc/html/draft-
+              meunier-http-message-signatures-directory-05>.
+
+   [OCAP]     Miller, M., "Robust Composition: Towards a Unified
+              Approach to Access Control and Concurrency Control", 2006,
+              <https://papers.agoric.com/assets/pdf/papers/robust-
+              composition.pdf>.
+
+   [OIDC]     Sakimura, N., Bradley, J., Jones, M., de Medeiros, B., and
+              C. Mortimore, "OpenID Connect Core 1.0", 2014,
+              <https://openid.net/specs/openid-connect-core-1_0.html>.
+
+   [OIDC-Discovery]
+              OpenID Foundation, "OpenID Connect Discovery 1.0",
+              <https://openid.net/specs/openid-connect-discovery-
+              1_0.html>.
+
+   [RFC2606]  Eastlake 3rd, D. and A. Panitz, "Reserved Top Level DNS
+              Names", BCP 32, RFC 2606, DOI 10.17487/RFC2606, June 1999,
+              <https://www.rfc-editor.org/rfc/rfc2606>.
+
+   [RFC8414]  Jones, M., Sakimura, N., and J. Bradley, "OAuth 2.0
+              Authorization Server Metadata", RFC 8414,
+              DOI 10.17487/RFC8414, June 2018,
+              <https://www.rfc-editor.org/rfc/rfc8414>.
+
+   [RFC8628]  Denniss, W., Bradley, J., Jones, M., and H. Tschofenig,
+              "OAuth 2.0 Device Authorization Grant", RFC 8628,
+              DOI 10.17487/RFC8628, August 2019,
+              <https://www.rfc-editor.org/rfc/rfc8628>.
+
+   [RFC9396]  Lodderstedt, T., Richer, J., and B. Campbell, "OAuth 2.0
+              Rich Authorization Requests", RFC 9396,
+              DOI 10.17487/RFC9396, May 2023,
+              <https://www.rfc-editor.org/rfc/rfc9396>.
+
+   [RFC9577]  Pauly, T., Valdez, S., and C. A. Wood, "The Privacy Pass
+              HTTP Authentication Scheme", RFC 9577,
+              DOI 10.17487/RFC9577, June 2024,
+              <https://www.rfc-editor.org/rfc/rfc9577>.
+
+   [XACML]    OASIS, "eXtensible Access Control Markup Language (XACML)
+              Version 3.0", 2013, <http://docs.oasis-open.org/xacml/3.0/
+              xacml-3.0-core-spec-os-en.html>.
+
+Appendix A.  Examples
+
+   This appendix is informative.
+
+   TODO: End-to-end example flows: (1) low-sensitivity disclosure via
+   the pre-provisioned lane; (2) high-sensitivity disclosure via the
+   issuer-mediated lane with interactive approval.  The anonymous-
+   admission flow lives in the core ([AAP-CORE]).
+
+Authors' Addresses
+
+   Ryan Drapeau
+   Stripe
+   Email: drapeau@stripe.com
+
+
+   David Pettersson
+   Shopify
+   Email: david.pettersson@shopify.com
