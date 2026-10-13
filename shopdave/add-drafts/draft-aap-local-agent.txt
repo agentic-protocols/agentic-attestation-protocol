@@ -518,8 +518,7 @@ Table of Contents
    *  The self-operated profile (Section 4): linking and issuance with
       the issuer as sole operator of record, the key-bound anchor, and
       platform-less key carriage (an inline Web Bot Auth directory is
-      the current candidate).  Tracked in the repository's design
-      issues.
+      the current candidate).
 
    *  Whether the self-operated profile belongs in this document or in a
       separate module: this document covers a platform's device-resident
